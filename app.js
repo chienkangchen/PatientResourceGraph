@@ -807,7 +807,7 @@ function buildGraph() {
         resources.forEach((resource) => {
             const nodeId = `${resource.resourceType}/${resource.id}`;
             addNode(nodeId, resource, resource.resourceType, getResourceDisplay(resource));
-            addEdge(patientNodeId, nodeId, "subject");
+            addEdge(patientNodeId, nodeId, "ref");
         });
     });
 
@@ -1217,7 +1217,7 @@ function collectAndAddReferences(sourceNodeId, resource) {
         const [type, id] = normalized.split("/");
         const label = id ? id : normalized;
         addNode(normalized, null, type || "Unknown", label, 2);
-        addEdge(sourceNodeId, normalized, "ref");
+        addEdge(sourceNodeId, normalized, "subject");
     });
 }
 
