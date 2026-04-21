@@ -244,8 +244,6 @@ const filterList = document.getElementById("filter-list");
 const detailCard = document.getElementById("detail-card");
 const errorBanner = document.getElementById("error-banner");
 const reloadBtn = document.getElementById("reload-btn");
-const fitBtn = document.getElementById("fit-btn");
-const nodeSearch = document.getElementById("node-search");
 
 // 常用的 Resource 類型（默認顯示）
 const COMMON_RESOURCES = new Set([
@@ -256,8 +254,6 @@ const COMMON_RESOURCES = new Set([
 ]);
 
 reloadBtn.addEventListener("click", () => initializeApp(true));
-fitBtn.addEventListener("click", () => network && network.fit({ animation: true }));
-nodeSearch.addEventListener("keyup", handleSearch);
 
 // 資源篩選收合功能（支援鍵盤導航）
 const filterCollapseHeader = document.querySelector(".collapsible-header");
@@ -352,7 +348,6 @@ async function initializeApp(forceReload) {
         renderStats();
         renderFilters();
         buildGraph();
-        renderTimeline();
         
         // 顯示初始的資源列表
         renderInitialResourceList();
@@ -1018,7 +1013,6 @@ function selectNodeById(nodeId) {
     });
 
     updateFiltersForNode(nodeId, connectedNodeIds);
-    syncTimelineHighlight(nodeId);
 
     renderDetail(nodeId, connectedNodeIds).catch((err) => {
         console.error("renderDetail 失敗:", err);
@@ -1039,7 +1033,6 @@ function deselectAllNodes() {
     });
 
     restoreFullFilters();
-    syncTimelineHighlight(null);
 
     detailCard.innerHTML = `
         <div class="empty-state">
@@ -1049,101 +1042,6 @@ function deselectAllNodes() {
     `;
 
     renderInitialResourceList();
-}
-
-/**
- * 同步時間軸高亮狀態
- */
-function syncTimelineHighlight(nodeId) {
-    document.querySelectorAll('.timeline-item').forEach((el) => {
-        el.classList.toggle('active', el.dataset.encounterId === nodeId);
-    });
-    const resetBtn = document.getElementById('timeline-reset-btn');
-    if (resetBtn) {
-        resetBtn.style.display = nodeId ? '' : 'none';
-    }
-}
-
-/**
- * 渲染就醫時間軸
- */
-function renderTimeline() {
-    const timelineEl = document.getElementById('timeline');
-    const resetBtn = document.getElementById('timeline-reset-btn');
-    if (!timelineEl) return;
-
-    const encounters = resourcesByType['Encounter'] || [];
-    if (encounters.length === 0) {
-        timelineEl.innerHTML = '<div class="timeline-empty">無就醫紀錄</div>';
-        return;
-    }
-
-    const sorted = [...encounters].sort((a, b) => {
-        const dateA = a.period?.start || '';
-        const dateB = b.period?.start || '';
-        return dateA.localeCompare(dateB);
-    });
-
-    const classIcons = {
-        'AMB': 'fa-hospital-user',
-        'IMP': 'fa-bed',
-        'EMER': 'fa-truck-medical',
-        'HH': 'fa-house-medical',
-        'VR': 'fa-video',
-        'ambulatory': 'fa-hospital-user',
-        'inpatient': 'fa-bed',
-        'emergency': 'fa-truck-medical'
-    };
-
-    const items = sorted.map((enc) => {
-        const dateStr = enc.period?.start ? formatDate(enc.period.start).split(' ')[0] : '未知日期';
-        const classCode = enc.class?.code || enc.class?.display || '';
-        const typeText = enc.type?.[0]?.text || getCodingDisplay(enc.type?.[0]?.coding) || classCode || '就醫';
-        const nodeId = `Encounter/${enc.id}`;
-        const icon = classIcons[classCode] || 'fa-calendar-check';
-        const color = TYPE_COLORS.Encounter;
-
-        return `<div class="timeline-item" data-encounter-id="${escapeHtml(nodeId)}" role="listitem" tabindex="0">
-                <div class="timeline-dot" style="background: ${color};">
-                    <i class="fas ${icon}"></i>
-                </div>
-                <div class="timeline-content">
-                    <div class="timeline-date">${escapeHtml(dateStr)}</div>
-                    <div class="timeline-label" title="${escapeHtml(typeText)}">${escapeHtml(typeText)}</div>
-                </div>
-            </div>`;
-    });
-
-    timelineEl.innerHTML = items.join('<div class="timeline-connector"></div>');
-
-    timelineEl.querySelectorAll('.timeline-item').forEach((item) => {
-        const handleClick = () => {
-            const encId = item.dataset.encounterId;
-            const wasActive = item.classList.contains('active');
-
-            if (wasActive) {
-                deselectAllNodes();
-                if (network) network.unselectAll();
-            } else {
-                selectNodeById(encId);
-            }
-        };
-
-        item.addEventListener('click', handleClick);
-        item.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleClick();
-            }
-        });
-    });
-
-    if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
-            deselectAllNodes();
-            if (network) network.unselectAll();
-        });
-    }
 }
 
 function renderFallbackGraph(message) {
@@ -1492,26 +1390,6 @@ function updateVisibility() {
         const hidden = (fromNode && fromNode.hidden) || (toNode && toNode.hidden);
         edges.update({ id: edge.id, hidden });
     });
-}
-
-function handleSearch(event) {
-    if (!network || !nodes) {
-        return;
-    }
-    if (event.key === "Enter") {
-        const term = nodeSearch.value.trim().toLowerCase();
-        if (!term) {
-            network.unselectAll();
-            return;
-        }
-        const matches = nodes.get({
-            filter: (item) => item.label && item.label.toLowerCase().includes(term) && !item.hidden
-        });
-        if (matches.length) {
-            network.selectNodes(matches.map((item) => item.id));
-            network.focus(matches[0].id, { scale: 1.2, animation: true });
-        }
-    }
 }
 
 async function renderDetail(nodeId, connectedNodeIds) {
