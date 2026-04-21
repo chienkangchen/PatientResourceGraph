@@ -352,6 +352,7 @@ async function initializeApp(forceReload) {
         renderStats();
         renderFilters();
         buildGraph();
+        renderTimeline();
         
         // 顯示初始的資源列表
         renderInitialResourceList();
@@ -774,6 +775,94 @@ function updateVisibilityForSelectedNode() {
     });
 }
 
+/**
+ * 從 FHIR 資源中提取所有 reference 欄位
+ */
+function extractReferences(resource) {
+    const refs = [];
+    const skipFields = new Set(['resourceType', 'id', 'meta', 'text', 'contained', 'extension', 'modifierExtension']);
+
+    const walk = (obj, fieldName) => {
+        if (!obj || typeof obj !== 'object') return;
+        if (Array.isArray(obj)) {
+            obj.forEach(item => walk(item, fieldName));
+            return;
+        }
+        if (obj.reference && typeof obj.reference === 'string') {
+            const target = normalizeReference(obj.reference);
+            if (target) {
+                refs.push({ target, label: fieldName });
+            }
+            return;
+        }
+        for (const [key, value] of Object.entries(obj)) {
+            if (skipFields.has(key)) continue;
+            walk(value, key);
+        }
+    };
+
+    for (const [key, value] of Object.entries(resource)) {
+        if (skipFields.has(key)) continue;
+        walk(value, key);
+    }
+    return refs;
+}
+
+/**
+ * 使用真實 FHIR reference 建立資源間的關聯邊
+ */
+function buildRealEdges(patientNodeId) {
+    const REFERENCE_DISPLAY = {
+        encounter: "就醫",
+        basedOn: "基於",
+        reasonReference: "原因",
+        result: "結果",
+        performer: "執行者",
+        requester: "開立者",
+        recorder: "記錄者",
+        asserter: "判斷者",
+        managingOrganization: "管理機構",
+        serviceProvider: "服務機構",
+        participant: "參與者",
+        location: "地點",
+        partOf: "屬於",
+        context: "情境",
+        medicationReference: "藥品",
+        focus: "焦點",
+        author: "作者",
+        source: "來源",
+        derivedFrom: "衍生自",
+        hasMember: "成員",
+        individual: "人員",
+        diagnosis: "診斷",
+        insurance: "保險"
+    };
+
+    RESOURCE_TYPES.forEach((type) => {
+        const resources = resourcesByType[type] || [];
+        resources.forEach((resource) => {
+            const sourceId = `${resource.resourceType}/${resource.id}`;
+            if (sourceId === patientNodeId) return;
+
+            const refs = extractReferences(resource);
+            let hasSpecificConnection = false;
+
+            refs.forEach(({ target, label }) => {
+                if (!nodeMeta.has(target)) return;
+                if (target === patientNodeId) return;
+
+                const edgeLabel = REFERENCE_DISPLAY[label] || "";
+                addEdge(sourceId, target, edgeLabel);
+                hasSpecificConnection = true;
+            });
+
+            if (!hasSpecificConnection) {
+                addEdge(patientNodeId, sourceId, "");
+            }
+        });
+    });
+}
+
 let expandedNodes = new Set();
 
 function buildGraph() {
@@ -801,13 +890,22 @@ function buildGraph() {
     });
     expandedNodes.add(patientNodeId);
 
-    // 添加病人的直接關聯資源（第一層）
+    // 添加所有資源節點
     RESOURCE_TYPES.forEach((type) => {
         const resources = resourcesByType[type] || [];
         resources.forEach((resource) => {
             const nodeId = `${resource.resourceType}/${resource.id}`;
             addNode(nodeId, resource, resource.resourceType, getResourceDisplay(resource));
-            addEdge(patientNodeId, nodeId, "ref");
+        });
+    });
+
+    // 使用真實 FHIR reference 建立關聯邊
+    buildRealEdges(patientNodeId);
+
+    // 標記所有已載入的資源為已展開
+    RESOURCE_TYPES.forEach((type) => {
+        (resourcesByType[type] || []).forEach((resource) => {
+            expandedNodes.add(`${resource.resourceType}/${resource.id}`);
         });
     });
 
@@ -878,74 +976,174 @@ function buildGraph() {
     network.on("selectNode", (params) => {
         const nodeId = params.nodes && params.nodes[0];
         if (nodeId) {
-            selectedNodeId = nodeId; // 記錄選中的節點
-            
-            // 先展開節點的 references（如果還未展開）
-            if (!expandedNodes.has(nodeId)) {
-                expandNode(nodeId);
-            }
-            
-            // 找出与该节点直接相连的所有节点
-            const connectedNodeIds = new Set([nodeId]);
-            edges.forEach((edge) => {
-                if (edge.from === nodeId) {
-                    connectedNodeIds.add(edge.to);
-                }
-                if (edge.to === nodeId) {
-                    connectedNodeIds.add(edge.from);
-                }
-            });
-            
-            // 隐藏所有非关联的节点
-            nodes.forEach((node) => {
-                const hidden = !connectedNodeIds.has(node.id);
-                nodes.update({ id: node.id, hidden });
-            });
-            
-            // 隐藏所有邊
-            edges.forEach((edge) => {
-                edges.update({ id: edge.id, hidden: true });
-            });
-            
-            // 只顯示與該節點相關的邊
-            edges.forEach((edge) => {
-                if (edge.from === nodeId || edge.to === nodeId) {
-                    edges.update({ id: edge.id, hidden: false });
-                }
-            });
-            
-            // 更新篩選器以只顯示該節點相關的資源類型
-            updateFiltersForNode(nodeId, connectedNodeIds);
-            
-            renderDetail(nodeId, connectedNodeIds).catch((err) => {
-                console.error("renderDetail 失敗:", err);
-            });
+            selectNodeById(nodeId);
         }
     });
 
     network.on("deselectNode", () => {
-        selectedNodeId = null; // 清除選中節點的記錄
-        
-        // 顯示所有節點和邊
-        nodes.forEach((node) => {
-            nodes.update({ id: node.id, hidden: false });
-        });
-        edges.forEach((edge) => {
-            edges.update({ id: edge.id, hidden: false });
-        });
-        
-        // 恢復完整的篩選器
-        restoreFullFilters();
-        
-        detailCard.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-hand-pointer"></i>
-                點選節點查看詳細資訊
-            </div>
-        `;
+        deselectAllNodes();
     });
 
     updateVisibility();
+}
+
+/**
+ * 選中指定節點，顯示其關聯資源
+ */
+function selectNodeById(nodeId) {
+    selectedNodeId = nodeId;
+
+    if (!expandedNodes.has(nodeId)) {
+        expandNode(nodeId);
+    }
+
+    const connectedNodeIds = new Set([nodeId]);
+    edges.forEach((edge) => {
+        if (edge.from === nodeId) connectedNodeIds.add(edge.to);
+        if (edge.to === nodeId) connectedNodeIds.add(edge.from);
+    });
+
+    nodes.forEach((node) => {
+        nodes.update({ id: node.id, hidden: !connectedNodeIds.has(node.id) });
+    });
+
+    edges.forEach((edge) => {
+        edges.update({ id: edge.id, hidden: true });
+    });
+
+    edges.forEach((edge) => {
+        if (edge.from === nodeId || edge.to === nodeId) {
+            edges.update({ id: edge.id, hidden: false });
+        }
+    });
+
+    updateFiltersForNode(nodeId, connectedNodeIds);
+    syncTimelineHighlight(nodeId);
+
+    renderDetail(nodeId, connectedNodeIds).catch((err) => {
+        console.error("renderDetail 失敗:", err);
+    });
+}
+
+/**
+ * 取消所有節點選擇，恢復完整視圖
+ */
+function deselectAllNodes() {
+    selectedNodeId = null;
+
+    nodes.forEach((node) => {
+        nodes.update({ id: node.id, hidden: false });
+    });
+    edges.forEach((edge) => {
+        edges.update({ id: edge.id, hidden: false });
+    });
+
+    restoreFullFilters();
+    syncTimelineHighlight(null);
+
+    detailCard.innerHTML = `
+        <div class="empty-state">
+            <i class="fas fa-hand-pointer"></i>
+            點選節點查看詳細資訊
+        </div>
+    `;
+
+    renderInitialResourceList();
+}
+
+/**
+ * 同步時間軸高亮狀態
+ */
+function syncTimelineHighlight(nodeId) {
+    document.querySelectorAll('.timeline-item').forEach((el) => {
+        el.classList.toggle('active', el.dataset.encounterId === nodeId);
+    });
+    const resetBtn = document.getElementById('timeline-reset-btn');
+    if (resetBtn) {
+        resetBtn.style.display = nodeId ? '' : 'none';
+    }
+}
+
+/**
+ * 渲染就醫時間軸
+ */
+function renderTimeline() {
+    const timelineEl = document.getElementById('timeline');
+    const resetBtn = document.getElementById('timeline-reset-btn');
+    if (!timelineEl) return;
+
+    const encounters = resourcesByType['Encounter'] || [];
+    if (encounters.length === 0) {
+        timelineEl.innerHTML = '<div class="timeline-empty">無就醫紀錄</div>';
+        return;
+    }
+
+    const sorted = [...encounters].sort((a, b) => {
+        const dateA = a.period?.start || '';
+        const dateB = b.period?.start || '';
+        return dateA.localeCompare(dateB);
+    });
+
+    const classIcons = {
+        'AMB': 'fa-hospital-user',
+        'IMP': 'fa-bed',
+        'EMER': 'fa-truck-medical',
+        'HH': 'fa-house-medical',
+        'VR': 'fa-video',
+        'ambulatory': 'fa-hospital-user',
+        'inpatient': 'fa-bed',
+        'emergency': 'fa-truck-medical'
+    };
+
+    const items = sorted.map((enc) => {
+        const dateStr = enc.period?.start ? formatDate(enc.period.start).split(' ')[0] : '未知日期';
+        const classCode = enc.class?.code || enc.class?.display || '';
+        const typeText = enc.type?.[0]?.text || getCodingDisplay(enc.type?.[0]?.coding) || classCode || '就醫';
+        const nodeId = `Encounter/${enc.id}`;
+        const icon = classIcons[classCode] || 'fa-calendar-check';
+        const color = TYPE_COLORS.Encounter;
+
+        return `<div class="timeline-item" data-encounter-id="${escapeHtml(nodeId)}" role="listitem" tabindex="0">
+                <div class="timeline-dot" style="background: ${color};">
+                    <i class="fas ${icon}"></i>
+                </div>
+                <div class="timeline-content">
+                    <div class="timeline-date">${escapeHtml(dateStr)}</div>
+                    <div class="timeline-label" title="${escapeHtml(typeText)}">${escapeHtml(typeText)}</div>
+                </div>
+            </div>`;
+    });
+
+    timelineEl.innerHTML = items.join('<div class="timeline-connector"></div>');
+
+    timelineEl.querySelectorAll('.timeline-item').forEach((item) => {
+        const handleClick = () => {
+            const encId = item.dataset.encounterId;
+            const wasActive = item.classList.contains('active');
+
+            if (wasActive) {
+                deselectAllNodes();
+                if (network) network.unselectAll();
+            } else {
+                selectNodeById(encId);
+            }
+        };
+
+        item.addEventListener('click', handleClick);
+        item.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleClick();
+            }
+        });
+    });
+
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            deselectAllNodes();
+            if (network) network.unselectAll();
+        });
+    }
 }
 
 function renderFallbackGraph(message) {
@@ -1246,7 +1444,14 @@ function getResourceDisplay(resource) {
     if (!resource) {
         return "";
     }
-
+    if (resource.code?.text) return resource.code.text;
+    if (resource.code?.coding?.[0]?.display) return resource.code.coding[0].display;
+    if (resource.type?.[0]?.text) return resource.type[0].text;
+    if (resource.type?.[0]?.coding?.[0]?.display) return resource.type[0].coding[0].display;
+    if (resource.medicationCodeableConcept?.text) return resource.medicationCodeableConcept.text;
+    if (resource.vaccineCode?.text) return resource.vaccineCode.text;
+    if (resource.name && typeof resource.name === 'string') return resource.name;
+    if (resource.name?.[0]) return formatHumanName(resource.name[0]);
     return resource.id || resource.resourceType;
 }
 
