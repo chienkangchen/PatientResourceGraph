@@ -4,20 +4,23 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="description" content="SMART on FHIR 病人資源關聯圖 - 視覺化呈現病人的醫療資源與關聯">
-        <title>病程脈絡總覽 - SMART on FHIR</title>
+        <title>病人資源關聯圖 - SMART on FHIR</title>
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+        <link href="https://unpkg.com/vis-network@9.1.2/styles/vis-network.min.css" rel="stylesheet">
         <link href="./style.css" rel="stylesheet">
         <script src="./fhir-client.js"></script>
+        <script src="https://unpkg.com/vis-network@9.1.2/standalone/umd/vis-network.min.js"></script>
     </head>
     <body>
+        <!-- 跳過導航連結（無障礙） -->
         <a href="#main-content" class="skip-link">跳至主要內容</a>
-        <div class="app" role="application" aria-label="病程脈絡總覽">
+        <div class="app" role="application" aria-label="病人資源關聯圖應用程式">
             <header class="app-header" role="banner">
                 <div class="title-block">
                     <img src="./logo.png" alt="SMART on FHIR 標誌" class="header-logo" loading="lazy">
                     <div class="title-text">
-                        <h1>病程脈絡總覽</h1>
-                        <p>SMART on FHIR 以就醫事件為核心的臨床資料視覺化</p>
+                        <h1>病人資源關聯圖</h1>
+                        <p>SMART on FHIR 病人資源總覽與關聯視覺化</p>
                     </div>
                 </div>
                 <div class="header-actions">
@@ -46,34 +49,38 @@
                     </div>
                 </aside>
 
-                <section class="panel panel-center" role="region" aria-label="就醫事件總覽">
-                    <div id="timeline-container" class="timeline-container">
-                        <div class="timeline-header">
-                            <span><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> 就醫時間軸</span>
-                            <button class="ghost-btn timeline-reset-btn" id="timeline-reset-btn" style="display:none;">
-                                <i class="fas fa-rotate-left" aria-hidden="true"></i> 顯示全部
-                            </button>
+                <section class="panel panel-center" role="region" aria-label="資源關聯圖">
+                    <div class="toolbar" role="toolbar" aria-label="圖表控制工具列">
+                        <div class="search-box">
+                            <label for="node-search" class="visually-hidden">搜尋資源</label>
+                            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                            <input id="node-search" type="search" placeholder="搜尋 Resource 類型或 ID..." aria-label="搜尋 Resource 類型或 ID" />
                         </div>
-                        <div id="timeline" class="timeline" role="list" aria-label="就醫時間軸">
-                            <div class="timeline-empty">載入中...</div>
+                        <div class="toolbar-actions">
+                            <button class="ghost-btn" id="fit-btn" aria-label="置中圖表視圖"><i class="fas fa-compress" aria-hidden="true"></i> 置中</button>
                         </div>
                     </div>
-                    <div id="encounter-view" class="encounter-view" role="region" aria-label="就醫事件內容" aria-live="polite">
-                        <div class="loading">載入中...</div>
-                    </div>
+                    <div id="graph" class="graph-canvas" role="img" aria-label="病人資源關聯圖" tabindex="0"></div>
                     <div id="graph-loading" class="graph-loading" role="status" aria-live="polite" style="display: none;">
-                        <i class="fas fa-spinner" aria-hidden="true"></i> 正在載入資料...
+                        <i class="fas fa-spinner" aria-hidden="true"></i> 正在建立關聯圖...
                     </div>
                 </section>
 
-                <aside class="panel panel-right" role="complementary" aria-label="資源詳情面板">
-                    <div id="filter-list" style="display:none;"></div>
+                <aside class="panel panel-right" role="complementary" aria-label="資源篩選與詳情面板">
+                    <div class="panel-section">
+                        <h2 id="filter-heading" class="collapsible-header" role="button" aria-expanded="false" aria-controls="filter-list" tabindex="0">
+                            <span><i class="fas fa-filter" aria-hidden="true"></i> 資源篩選</span>
+                            <i class="fas fa-chevron-up collapse-icon collapsed" id="filter-collapse-icon" aria-hidden="true"></i>
+                        </h2>
+                        <div id="filter-list" class="filter-list collapsible-content collapsed" role="group" aria-labelledby="filter-heading"></div>
+                    </div>
+
                     <div class="panel-section">
                         <h2 id="detail-heading"><i class="fas fa-circle-info" aria-hidden="true"></i> 資源詳情</h2>
                         <div id="detail-card" class="card" role="region" aria-labelledby="detail-heading" aria-live="polite">
                             <div class="empty-state">
                                 <i class="fas fa-hand-pointer"></i>
-                                點選時間軸上的就醫事件查看詳情
+                                點選節點查看詳細資訊
                             </div>
                         </div>
                     </div>
