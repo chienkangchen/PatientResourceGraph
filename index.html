@@ -60,6 +60,17 @@
                             <button class="ghost-btn" id="fit-btn" aria-label="置中圖表視圖"><i class="fas fa-compress" aria-hidden="true"></i> 置中</button>
                         </div>
                     </div>
+                    <div id="timeline-container" class="timeline-container">
+                        <div class="timeline-header">
+                            <span><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> 就醫時間軸</span>
+                            <button class="ghost-btn timeline-reset-btn" id="timeline-reset-btn" style="display:none;">
+                                <i class="fas fa-rotate-left" aria-hidden="true"></i> 顯示全部
+                            </button>
+                        </div>
+                        <div id="timeline" class="timeline" role="list" aria-label="就醫時間軸">
+                            <div class="timeline-empty">載入中...</div>
+                        </div>
+                    </div>
                     <div id="graph" class="graph-canvas" role="img" aria-label="病人資源關聯圖" tabindex="0"></div>
                     <div id="graph-loading" class="graph-loading" role="status" aria-live="polite" style="display: none;">
                         <i class="fas fa-spinner" aria-hidden="true"></i> 正在建立關聯圖...
