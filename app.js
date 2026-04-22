@@ -5,6 +5,13 @@
  */
 
 const RESOURCE_TYPES = [
+    // Core / Context
+    "Organization",
+    "Practitioner",
+    "PractitionerRole",
+    "RelatedPerson",
+    "Location",
+
     // Clinical (临床)
     "AllergyIntolerance",
     "CarePlan",
@@ -79,7 +86,10 @@ const RESOURCE_LABELS = {
     // Core
     Patient: "病人",
     Practitioner: "執業人員",
+    PractitionerRole: "執業角色",
+    RelatedPerson: "相關人員",
     Organization: "組織",
+    Location: "地點",
     
     // Clinical
     AllergyIntolerance: "過敏",
@@ -153,6 +163,11 @@ const RESOURCE_LABELS = {
 
 const TYPE_COLORS = {
     Patient: "#1d4ed8",
+    Practitioner: "#60a5fa",
+    PractitionerRole: "#3b82f6",
+    RelatedPerson: "#93c5fd",
+    Organization: "#fbbf24",
+    Location: "#f59e0b",
     
     // Clinical
     AllergyIntolerance: "#e11d48",
@@ -227,6 +242,11 @@ const TYPE_COLORS = {
 };
 
 const RESOURCE_GROUP_ICONS = {
+    Organization: "fa-building",
+    Practitioner: "fa-user-doctor",
+    PractitionerRole: "fa-user-nurse",
+    RelatedPerson: "fa-people-arrows",
+    Location: "fa-location-dot",
     Observation: "fa-stethoscope",
     Condition: "fa-heart-pulse",
     Procedure: "fa-user-doctor",
@@ -768,6 +788,10 @@ async function fetchResourcesForType(type, patientId) {
     const queries = buildSearchCandidates(type, patientId);
     let results = [];
 
+    if (!queries.length) {
+        return results;
+    }
+
     for (const query of queries) {
         try {
             const response = await requestAll(`${type}?${query}`);
@@ -784,6 +808,11 @@ async function fetchResourcesForType(type, patientId) {
 
 function buildSearchCandidates(type, patientId) {
     const paramSets = {
+        Practitioner: [],
+        PractitionerRole: [],
+        RelatedPerson: [],
+        Organization: [],
+        Location: [],
         Encounter: ["patient"],
         Condition: ["patient", "subject"],
         Observation: ["patient", "subject"],
