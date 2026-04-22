@@ -78,6 +78,22 @@
             </main>
         </div>
 
+        <div id="group-modal" class="group-modal" role="dialog" aria-modal="true" aria-labelledby="group-modal-title" hidden>
+            <div id="group-modal-backdrop" class="group-modal-backdrop"></div>
+            <div class="group-modal-dialog">
+                <div class="group-modal-header">
+                    <div>
+                        <h2 id="group-modal-title">群組資源</h2>
+                        <p id="group-modal-meta" class="group-modal-meta"></p>
+                    </div>
+                    <button id="group-modal-close" class="group-modal-close" type="button" aria-label="關閉群組視窗">
+                        <i class="fas fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div id="group-modal-body" class="group-modal-body"></div>
+            </div>
+        </div>
+
         <script src="./app.js"></script>
         <script>
             // 延遲載入 favicon

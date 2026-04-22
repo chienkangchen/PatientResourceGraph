@@ -226,6 +226,72 @@ const TYPE_COLORS = {
     Unknown: "#94a3b8"
 };
 
+const RESOURCE_GROUPS = {
+    clinical: {
+        label: "臨床",
+        icon: "fa-heart-pulse",
+        color: "#ef4444",
+        types: [
+            "AllergyIntolerance", "CarePlan", "CareTeam", "ClinicalImpression",
+            "Condition", "DetectedIssue", "FamilyMemberHistory", "Goal",
+            "Procedure", "RiskAssessment"
+        ]
+    },
+    diagnostics: {
+        label: "檢驗與診斷",
+        icon: "fa-vial-circle-check",
+        color: "#14b8a6",
+        types: ["BodyStructure", "DiagnosticReport", "ImagingStudy", "Media", "Observation", "Specimen"]
+    },
+    medications: {
+        label: "用藥",
+        icon: "fa-pills",
+        color: "#f97316",
+        types: ["Immunization", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement"]
+    },
+    workflow: {
+        label: "工作流程",
+        icon: "fa-diagram-project",
+        color: "#6366f1",
+        types: ["Appointment", "AppointmentResponse", "DeviceRequest", "NutritionOrder", "ServiceRequest", "Task", "VisionPrescription"]
+    },
+    financial: {
+        label: "財務",
+        icon: "fa-file-invoice-dollar",
+        color: "#ec4899",
+        types: [
+            "Account", "ChargeItem", "Claim", "ClaimResponse", "Coverage",
+            "CoverageEligibilityRequest", "CoverageEligibilityResponse", "EnrollmentRequest",
+            "EnrollmentResponse", "ExplanationOfBenefit", "Invoice", "PaymentNotice", "PaymentReconciliation"
+        ]
+    },
+    administrative: {
+        label: "行政與就醫",
+        icon: "fa-hospital-user",
+        color: "#0ea5e9",
+        types: ["Encounter", "EpisodeOfCare", "Flag"]
+    },
+    documents: {
+        label: "文件",
+        icon: "fa-folder-open",
+        color: "#64748b",
+        types: ["Composition", "DocumentManifest", "DocumentReference", "QuestionnaireResponse"]
+    },
+    others: {
+        label: "其他",
+        icon: "fa-boxes-stacked",
+        color: "#22c55e",
+        types: ["Communication", "CommunicationRequest", "DeviceUseStatement", "SupplyDelivery", "SupplyRequest"]
+    }
+};
+
+const RESOURCE_TYPE_TO_GROUP = Object.entries(RESOURCE_GROUPS).reduce((map, [groupId, config]) => {
+    config.types.forEach((type) => {
+        map[type] = groupId;
+    });
+    return map;
+}, {});
+
 let client = null;
 let patientResource = null;
 let resourcesByType = {};
@@ -235,6 +301,8 @@ let edges = null;
 let nodeMeta = new Map();
 let resourceMap = new Map();
 let selectedNodeId = null; // 追蹤目前選中的節點
+let activeGroupModalId = null;
+let activeGroupModalView = "table";
 
 const graphContainer = document.getElementById("graph");
 const graphLoading = document.getElementById("graph-loading");
@@ -244,16 +312,30 @@ const filterList = document.getElementById("filter-list");
 const detailCard = document.getElementById("detail-card");
 const errorBanner = document.getElementById("error-banner");
 const reloadBtn = document.getElementById("reload-btn");
+const groupModal = document.getElementById("group-modal");
+const groupModalTitle = document.getElementById("group-modal-title");
+const groupModalMeta = document.getElementById("group-modal-meta");
+const groupModalBody = document.getElementById("group-modal-body");
+const groupModalClose = document.getElementById("group-modal-close");
+const groupModalBackdrop = document.getElementById("group-modal-backdrop");
 
-// 常用的 Resource 類型（默認顯示）
-const COMMON_RESOURCES = new Set([
-    "Patient", "Observation", "Condition", "Procedure", 
-    "Encounter", "MedicationStatement", "Immunization",
-    "DiagnosticReport", "AllergyIntolerance", "Medication",
-    "Claim", "ExplanationOfBenefit", "CarePlan", "Goal"
-]);
+const DEFAULT_VISIBLE_GROUPS = new Set(Object.keys(RESOURCE_GROUPS));
 
 reloadBtn.addEventListener("click", () => initializeApp(true));
+
+if (groupModalClose) {
+    groupModalClose.addEventListener("click", closeGroupModal);
+}
+
+if (groupModalBackdrop) {
+    groupModalBackdrop.addEventListener("click", closeGroupModal);
+}
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && groupModal && !groupModal.hidden) {
+        closeGroupModal();
+    }
+});
 
 // 資源篩選收合功能（支援鍵盤導航）
 const filterCollapseHeader = document.querySelector(".collapsible-header");
@@ -349,8 +431,7 @@ async function initializeApp(forceReload) {
         renderFilters();
         buildGraph();
         
-        // 顯示初始的資源列表
-        renderInitialResourceList();
+        renderInitialGroupOverview();
     } catch (error) {
         showError("載入資料時發生錯誤", error);
     } finally {
@@ -498,6 +579,7 @@ function resetUI() {
             點選節點查看詳細資訊
         </div>
     `;
+    closeGroupModal();
 }
 
 function setGraphLoading(isLoading) {
@@ -631,6 +713,16 @@ function renderPatientCard(patient) {
 function renderStats() {
     const totalResources = RESOURCE_TYPES.reduce((sum, type) => sum + (resourcesByType[type] || []).length, 0);
 
+    const groupSummaryHtml = Object.entries(RESOURCE_GROUPS).map(([groupId, group]) => {
+        const count = getGroupResources(groupId).length;
+        return `
+            <div class="stat-item" style="border-color: ${group.color};">
+                <div class="stat-count">${count}</div>
+                <div class="stat-label">${group.label}</div>
+            </div>
+        `;
+    }).join("");
+
     const statsHtml = RESOURCE_TYPES.map((type) => {
         const count = (resourcesByType[type] || []).length;
         return `
@@ -646,20 +738,20 @@ function renderStats() {
             <div class="stat-count">${totalResources}</div>
             <div class="stat-label">總資源數</div>
         </div>
+        ${groupSummaryHtml}
         ${statsHtml}
     `;
 }
 
 function renderFilters() {
-    filterList.innerHTML = RESOURCE_TYPES.map((type) => {
-        const count = (resourcesByType[type] || []).length;
-        const isCommon = COMMON_RESOURCES.has(type);
-        const isChecked = isCommon ? "checked" : ""; // 常用的預設勾選，不常用的預設不勾選
+    filterList.innerHTML = Object.entries(RESOURCE_GROUPS).map(([groupId, group]) => {
+        const count = getGroupResources(groupId).length;
+        const isChecked = count > 0 && DEFAULT_VISIBLE_GROUPS.has(groupId) ? "checked" : "";
         return `
             <label class="filter-item">
-                <input type="checkbox" data-type="${type}" ${isChecked} />
-                <span class="filter-color" style="background: ${TYPE_COLORS[type] || TYPE_COLORS.Unknown}"></span>
-                <span class="filter-text">${RESOURCE_LABELS[type] || type} <span class="filter-type">${type}</span></span>
+                <input type="checkbox" data-group="${groupId}" ${isChecked} ${count === 0 ? "disabled" : ""} />
+                <span class="filter-color" style="background: ${group.color}"></span>
+                <span class="filter-text">${group.label} <span class="filter-type">${count} 項</span></span>
             </label>
         `;
     }).join("");
@@ -873,35 +965,23 @@ function buildGraph() {
     edges = new vis.DataSet();
 
     const patientNodeId = `Patient/${patientResource.id}`;
-    
-    // 只添加病人和直接關聯的資源
-    addNode(patientNodeId, patientResource, "Patient", "病人");
-    expandedNodes.add(patientNodeId); // 標記 Patient 為已展開，避免重複處理
+    indexLoadedResources();
+
+    addGraphPatientNode(patientNodeId, patientResource);
     nodes.update({
         id: patientNodeId,
         shape: "star",
         size: 28,
         font: { color: "#ffffff", size: 16 }
     });
-    expandedNodes.add(patientNodeId);
 
-    // 添加所有資源節點
-    RESOURCE_TYPES.forEach((type) => {
-        const resources = resourcesByType[type] || [];
-        resources.forEach((resource) => {
-            const nodeId = `${resource.resourceType}/${resource.id}`;
-            addNode(nodeId, resource, resource.resourceType, getResourceDisplay(resource));
-        });
-    });
-
-    // 使用真實 FHIR reference 建立關聯邊
-    buildRealEdges(patientNodeId);
-
-    // 標記所有已載入的資源為已展開
-    RESOURCE_TYPES.forEach((type) => {
-        (resourcesByType[type] || []).forEach((resource) => {
-            expandedNodes.add(`${resource.resourceType}/${resource.id}`);
-        });
+    Object.entries(RESOURCE_GROUPS).forEach(([groupId, config]) => {
+        const groupResources = getGroupResources(groupId);
+        if (!groupResources.length) {
+            return;
+        }
+        addGraphGroupNode(groupId, config, groupResources.length);
+        addEdge(patientNodeId, `Group/${groupId}`, `${groupResources.length} 項`);
     });
 
     const options = {
@@ -918,11 +998,11 @@ function buildGraph() {
                 onlyDynamicEdges: false
             },
             barnesHut: {
-                gravitationalConstant: -25000,
-                springLength: 50,
-                springConstant: 0.15,
-                damping: 0.6,
-                avoidOverlap: 0.4
+                gravitationalConstant: -12000,
+                springLength: 180,
+                springConstant: 0.04,
+                damping: 0.5,
+                avoidOverlap: 0.8
             },
             maxVelocity: 50,
             minVelocity: 0.75,
@@ -932,7 +1012,7 @@ function buildGraph() {
         },
         nodes: {
             shape: "dot",
-            size: 18,
+            size: 24,
             font: {
                 color: "#e2e8f0",
                 face: "Segoe UI",
@@ -943,11 +1023,11 @@ function buildGraph() {
         },
         edges: {
             arrows: {
-                to: { enabled: true, scaleFactor: 0.6 }
+                to: { enabled: false, scaleFactor: 0.6 }
             },
             color: "#94a3b8",
             smooth: {
-                type: "dynamic"
+                type: "continuous"
             }
         },
         groups: buildGroupStyles()
@@ -965,7 +1045,7 @@ function buildGraph() {
     });
 
     if (nodes.length <= 1) {
-        showError("目前沒有可視的關聯資源", { message: "只載入到 Patient 資料。" });
+        showError("目前沒有可視的資源群組", { message: "只載入到 Patient 資料。" });
     }
 
     network.on("selectNode", (params) => {
@@ -987,6 +1067,25 @@ function buildGraph() {
  */
 function selectNodeById(nodeId) {
     selectedNodeId = nodeId;
+
+    const meta = nodeMeta.get(nodeId);
+    if (!meta) {
+        return;
+    }
+
+    if (meta.kind === "group") {
+        network.focus(nodeId, { scale: 1.05, animation: true });
+        renderGroupSummary(meta.groupId);
+        openGroupModal(meta.groupId, "table");
+        return;
+    }
+
+    if (meta.kind === "patient") {
+        renderDetail(nodeId, new Set([nodeId])).catch((err) => {
+            console.error("renderDetail 失敗:", err);
+        });
+        return;
+    }
 
     if (!expandedNodes.has(nodeId)) {
         expandNode(nodeId);
@@ -1025,23 +1124,16 @@ function selectNodeById(nodeId) {
 function deselectAllNodes() {
     selectedNodeId = null;
 
-    nodes.forEach((node) => {
-        nodes.update({ id: node.id, hidden: false });
-    });
-    edges.forEach((edge) => {
-        edges.update({ id: edge.id, hidden: false });
-    });
-
-    restoreFullFilters();
+    updateVisibility();
 
     detailCard.innerHTML = `
         <div class="empty-state">
             <i class="fas fa-hand-pointer"></i>
-            點選節點查看詳細資訊
+            點選資源群組以開啟表格或時間軸檢視
         </div>
     `;
 
-    renderInitialResourceList();
+    renderInitialGroupOverview();
 }
 
 function renderFallbackGraph(message) {
@@ -1150,6 +1242,57 @@ function buildGroupStyles() {
     };
 
     return groups;
+}
+
+function addGraphPatientNode(nodeId, resource) {
+    addNode(nodeId, resource, "Patient", formatHumanName(resource.name?.[0]) || "病人");
+    nodeMeta.set(nodeId, { kind: "patient", group: "Patient", distance: 0 });
+}
+
+function addGraphGroupNode(groupId, groupConfig, count) {
+    const nodeId = `Group/${groupId}`;
+    const label = `${groupConfig.label}\n${count} 項資源`;
+    nodes.add({
+        id: nodeId,
+        label,
+        shape: "box",
+        margin: 14,
+        color: {
+            background: groupConfig.color,
+            border: "#ffffff",
+            highlight: {
+                background: "#fbbf24",
+                border: "#f59e0b"
+            }
+        },
+        font: {
+            color: "#ffffff",
+            size: 16,
+            face: "Segoe UI"
+        }
+    });
+    nodeMeta.set(nodeId, { kind: "group", groupId, group: groupId, distance: 1 });
+}
+
+function indexLoadedResources() {
+    resourceMap = new Map();
+    if (patientResource && patientResource.id) {
+        resourceMap.set(`Patient/${patientResource.id}`, patientResource);
+    }
+    RESOURCE_TYPES.forEach((type) => {
+        (resourcesByType[type] || []).forEach((resource) => {
+            resourceMap.set(`${resource.resourceType}/${resource.id}`, resource);
+        });
+    });
+}
+
+function getGroupResources(groupId) {
+    const group = RESOURCE_GROUPS[groupId];
+    if (!group) {
+        return [];
+    }
+
+    return group.types.flatMap((type) => (resourcesByType[type] || []));
 }
 
 function addNode(nodeId, resource, group, displayText, distance = 1) {
@@ -1366,21 +1509,21 @@ function updateVisibility() {
         return;
     }
     
-    const selectedTypes = new Set();
+    const selectedGroups = new Set();
     filterList.querySelectorAll("input[type=checkbox]").forEach((checkbox) => {
         if (checkbox.checked) {
-            selectedTypes.add(checkbox.dataset.type);
+            selectedGroups.add(checkbox.dataset.group);
         }
     });
 
     nodes.forEach((node) => {
-        if (node.id.startsWith("Patient/")) {
+        const meta = nodeMeta.get(node.id);
+        if (meta && meta.kind === "patient") {
             nodes.update({ id: node.id, hidden: false });
             return;
         }
-        const meta = nodeMeta.get(node.id);
         const group = meta && meta.group ? meta.group : "Unknown";
-        const shouldShow = selectedTypes.has(group) || group === "Unknown";
+        const shouldShow = selectedGroups.has(group);
         nodes.update({ id: node.id, hidden: !shouldShow });
     });
 
@@ -2500,4 +2643,271 @@ function safeBuildGraph() {
         showError("關聯圖渲染失敗", error);
         renderFallbackGraph("關聯圖渲染失敗，改用靜態清單顯示。");
     }
+}
+
+function renderInitialGroupOverview() {
+    if (!detailCard || !patientResource) {
+        return;
+    }
+
+    const groupCards = Object.entries(RESOURCE_GROUPS)
+        .map(([groupId, group]) => {
+            const resources = getGroupResources(groupId);
+            if (!resources.length) {
+                return "";
+            }
+            const latestDate = getLatestGroupDate(resources);
+            return `
+                <button class="group-overview-card" type="button" data-group-id="${groupId}">
+                    <span class="group-overview-icon" style="background:${group.color};">
+                        <i class="fas ${group.icon}" aria-hidden="true"></i>
+                    </span>
+                    <span class="group-overview-copy">
+                        <strong>${group.label}</strong>
+                        <span>${resources.length} 項資源</span>
+                        <span>${latestDate ? `最近時間：${formatDate(latestDate)}` : "尚無日期資訊"}</span>
+                    </span>
+                </button>
+            `;
+        })
+        .join("");
+
+    detailCard.innerHTML = `
+        <h3>資源群組總覽</h3>
+        <div class="detail-summary">
+            <div class="summary-row"><span>病人</span><span>${formatHumanName(patientResource.name?.[0])}</span></div>
+            <div class="summary-row"><span>群組數</span><span>${Object.keys(RESOURCE_GROUPS).filter((groupId) => getGroupResources(groupId).length > 0).length} 組</span></div>
+        </div>
+        <div class="group-overview-list">
+            ${groupCards || '<div class="empty-state">目前沒有可用資源群組</div>'}
+        </div>
+    `;
+
+    detailCard.querySelectorAll(".group-overview-card").forEach((button) => {
+        button.addEventListener("click", () => {
+            const groupId = button.dataset.groupId;
+            if (!groupId) {
+                return;
+            }
+            const groupNodeId = `Group/${groupId}`;
+            if (network && nodes.get(groupNodeId)) {
+                network.selectNodes([groupNodeId]);
+                network.focus(groupNodeId, { scale: 1.05, animation: true });
+            } else {
+                renderGroupSummary(groupId);
+                openGroupModal(groupId, "table");
+            }
+        });
+    });
+}
+
+function renderGroupSummary(groupId) {
+    const group = RESOURCE_GROUPS[groupId];
+    if (!group || !detailCard) {
+        return;
+    }
+
+    const resources = sortResourcesByDate(getGroupResources(groupId));
+    const previewItems = resources.slice(0, 5).map((resource) => {
+        const nodeId = `${resource.resourceType}/${resource.id}`;
+        return `
+            <button class="group-resource-preview" type="button" data-resource-id="${nodeId}">
+                <span class="group-resource-preview-title">${escapeHtml(getResourceCardTitle(resource))}</span>
+                <span class="group-resource-preview-meta">${RESOURCE_LABELS[resource.resourceType] || resource.resourceType} · ${getDisplayDate(resource) || "無日期"}</span>
+            </button>
+        `;
+    }).join("");
+
+    detailCard.innerHTML = `
+        <h3>${group.label}</h3>
+        <div class="detail-summary">
+            <div class="summary-row"><span>資源數</span><span>${resources.length} 項</span></div>
+            <div class="summary-row"><span>涵蓋類型</span><span>${group.types.map((type) => RESOURCE_LABELS[type] || type).join("、")}</span></div>
+        </div>
+        <button class="primary-btn group-summary-action" id="open-group-modal-action" type="button">
+            <i class="fas fa-up-right-from-square" aria-hidden="true"></i> 以表格或時間軸檢視
+        </button>
+        <div class="group-resource-preview-list">
+            ${previewItems || '<div class="empty-state">此群組沒有資源</div>'}
+        </div>
+    `;
+
+    const openButton = document.getElementById("open-group-modal-action");
+    if (openButton) {
+        openButton.addEventListener("click", () => openGroupModal(groupId, activeGroupModalView));
+    }
+
+    detailCard.querySelectorAll(".group-resource-preview").forEach((button) => {
+        button.addEventListener("click", () => {
+            const resourceId = button.dataset.resourceId;
+            if (!resourceId) {
+                return;
+            }
+            renderDetail(resourceId, new Set([resourceId])).catch((err) => {
+                console.error("renderDetail 失敗:", err);
+            });
+        });
+    });
+}
+
+function openGroupModal(groupId, view = "table") {
+    if (!groupModal || !groupModalBody || !groupModalTitle || !groupModalMeta) {
+        return;
+    }
+
+    activeGroupModalId = groupId;
+    activeGroupModalView = view;
+    groupModal.hidden = false;
+    document.body.classList.add("modal-open");
+    renderGroupModal();
+}
+
+function closeGroupModal() {
+    if (!groupModal) {
+        return;
+    }
+
+    groupModal.hidden = true;
+    document.body.classList.remove("modal-open");
+    activeGroupModalId = null;
+}
+
+function renderGroupModal() {
+    const group = RESOURCE_GROUPS[activeGroupModalId];
+    if (!group || !groupModalBody || !groupModalTitle || !groupModalMeta) {
+        return;
+    }
+
+    const resources = sortResourcesByDate(getGroupResources(activeGroupModalId));
+    groupModalTitle.textContent = `${group.label}資源`;
+    groupModalMeta.textContent = `${resources.length} 項 · ${group.types.map((type) => RESOURCE_LABELS[type] || type).join("、")}`;
+    groupModalBody.innerHTML = `
+        <div class="group-modal-toolbar">
+            <button type="button" class="group-view-toggle ${activeGroupModalView === "table" ? "active" : ""}" data-view="table">表格</button>
+            <button type="button" class="group-view-toggle ${activeGroupModalView === "timeline" ? "active" : ""}" data-view="timeline">時間軸</button>
+        </div>
+        ${activeGroupModalView === "timeline" ? buildGroupTimelineView(resources, group) : buildGroupTableView(resources, group)}
+    `;
+
+    groupModalBody.querySelectorAll(".group-view-toggle").forEach((button) => {
+        button.addEventListener("click", () => {
+            activeGroupModalView = button.dataset.view || "table";
+            renderGroupModal();
+        });
+    });
+
+    groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
+        element.addEventListener("click", () => {
+            const resourceId = element.dataset.resourceId;
+            if (!resourceId) {
+                return;
+            }
+            closeGroupModal();
+            renderDetail(resourceId, new Set([resourceId])).catch((err) => {
+                console.error("renderDetail 失敗:", err);
+            });
+        });
+    });
+}
+
+function buildGroupTableView(resources, group) {
+    if (!resources.length) {
+        return '<div class="empty-state">此群組沒有可顯示資料</div>';
+    }
+
+    const rows = resources.map((resource) => {
+        const nodeId = `${resource.resourceType}/${resource.id}`;
+        return `
+            <tr class="group-table-row" data-resource-id="${nodeId}" tabindex="0">
+                <td>${escapeHtml(getDisplayDate(resource) || "-")}</td>
+                <td>${escapeHtml(getResourceCardTitle(resource))}</td>
+                <td>${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)}</td>
+                <td>${escapeHtml(getResourceStatus(resource) || "-")}</td>
+                <td>${escapeHtml(resource.id || "-")}</td>
+            </tr>
+        `;
+    }).join("");
+
+    return `
+        <div class="group-table-wrap" data-group-color="${group.color}">
+            <table class="group-table">
+                <thead>
+                    <tr>
+                        <th>日期</th>
+                        <th>標題</th>
+                        <th>類型</th>
+                        <th>狀態</th>
+                        <th>ID</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+function buildGroupTimelineView(resources, group) {
+    if (!resources.length) {
+        return '<div class="timeline-empty">此群組沒有可顯示資料</div>';
+    }
+
+    const items = resources.map((resource) => {
+        const nodeId = `${resource.resourceType}/${resource.id}`;
+        return `
+            <button type="button" class="timeline-item modal-timeline-item" data-resource-id="${nodeId}">
+                <span class="timeline-dot" style="background:${group.color}; box-shadow: 0 0 0 6px ${group.color}22;"></span>
+                <span class="timeline-content">
+                    <span class="timeline-date">${escapeHtml(getDisplayDate(resource) || "無日期")}</span>
+                    <span class="timeline-label">${escapeHtml(getResourceCardTitle(resource))}</span>
+                    <span class="timeline-type">${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)}${getResourceStatus(resource) ? ` · ${escapeHtml(getResourceStatus(resource))}` : ""}</span>
+                </span>
+            </button>
+        `;
+    }).join("");
+
+    return `
+        <div class="timeline-container modal-timeline-container">
+            <div class="timeline">${items}</div>
+        </div>
+    `;
+}
+
+function sortResourcesByDate(resources) {
+    return [...resources].sort((a, b) => {
+        const dateA = getResourceDate(a);
+        const dateB = getResourceDate(b);
+        if (!dateA && !dateB) {
+            return (a.id || "").localeCompare(b.id || "");
+        }
+        if (!dateA) {
+            return 1;
+        }
+        if (!dateB) {
+            return -1;
+        }
+        return new Date(dateB) - new Date(dateA);
+    });
+}
+
+function getLatestGroupDate(resources) {
+    const sorted = sortResourcesByDate(resources);
+    return sorted.length ? getResourceDate(sorted[0]) : null;
+}
+
+function getDisplayDate(resource) {
+    const date = getResourceDate(resource);
+    return date ? formatDate(date) : "";
+}
+
+function getResourceStatus(resource) {
+    if (!resource) {
+        return "";
+    }
+
+    return resource.status
+        || resource.clinicalStatus?.coding?.[0]?.display
+        || resource.clinicalStatus?.coding?.[0]?.code
+        || resource.verificationStatus?.coding?.[0]?.display
+        || resource.lifecycleStatus
+        || "";
 }
