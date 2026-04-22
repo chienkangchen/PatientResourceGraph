@@ -2217,11 +2217,17 @@ function buildCompactDetailPanel(resource, relatedResources) {
     const resourceLabel = RESOURCE_LABELS[resource.resourceType] || resource.resourceType;
     const resourceStatus = getResourceStatus(resource);
     const resourceDate = getDisplayDate(resource);
+    const actionButtonHtml = `
+        <div class="detail-action-bar detail-action-bar-top">
+            <button class="primary-btn" id="open-related-modal-action" type="button" ${relatedCount ? "" : "disabled"}>
+                <i class="fas fa-table-list" aria-hidden="true"></i> 查看相關 Resource${relatedCount ? ` (${relatedCount})` : ""}
+            </button>
+        </div>
+    `;
 
     return `
         <div class="resource-detail-panel">
             <div class="resource-detail-header">
-                <span class="resource-detail-kicker">資源摘要</span>
                 <h3>${escapeHtml(getResourceCardTitle(resource))}</h3>
                 <div class="resource-detail-meta">
                     <span class="story-type-chip">${escapeHtml(resourceLabel)}</span>
@@ -2229,16 +2235,12 @@ function buildCompactDetailPanel(resource, relatedResources) {
                     ${resourceDate ? `<span class="story-type-chip">${escapeHtml(resourceDate)}</span>` : ""}
                 </div>
             </div>
+            ${actionButtonHtml}
             <div class="story-overview-card">
                 <h4>重點資訊</h4>
                 <div class="detail-summary">
                     ${buildResourceSummary(resource)}
                 </div>
-            </div>
-            <div class="detail-action-bar">
-                <button class="primary-btn" id="open-related-modal-action" type="button" ${relatedCount ? "" : "disabled"}>
-                    <i class="fas fa-table-list" aria-hidden="true"></i> 查看相關 Resource${relatedCount ? ` (${relatedCount})` : ""}
-                </button>
             </div>
         </div>
     `;
