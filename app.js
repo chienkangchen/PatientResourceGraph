@@ -440,6 +440,8 @@ let resourceMap = new Map();
 let selectedNodeId = null; // 追蹤目前選中的節點
 let activeGroupModalId = null;
 let activeGroupModalView = "table";
+let activeModalMode = "group";
+let activeRelatedContext = null;
 
 const graphContainer = document.getElementById("graph");
 const graphLoading = document.getElementById("graph-loading");
@@ -717,7 +719,7 @@ function resetUI() {
     detailCard.innerHTML = `
         <div class="empty-state">
             <i class="fas fa-hand-pointer"></i>
-            點選節點閱讀事件故事
+            點選節點查看資源摘要
         </div>
     `;
     closeGroupModal();
@@ -1270,7 +1272,7 @@ function deselectAllNodes() {
     detailCard.innerHTML = `
         <div class="empty-state">
             <i class="fas fa-hand-pointer"></i>
-            點選節點閱讀事件故事
+            點選節點查看資源摘要
         </div>
     `;
 
@@ -1991,6 +1993,155 @@ function buildResourceStory(resource, connectedResources) {
     `;
 }
 
+function buildCompactDetailPanel(resource, relatedResources) {
+    const relatedCount = relatedResources.length;
+    const resourceLabel = RESOURCE_LABELS[resource.resourceType] || resource.resourceType;
+    const resourceStatus = getResourceStatus(resource);
+    const resourceDate = getDisplayDate(resource);
+
+    return `
+        <div class="resource-detail-panel">
+            <div class="resource-detail-header">
+                <span class="resource-detail-kicker">資源摘要</span>
+                <h3>${escapeHtml(getResourceCardTitle(resource))}</h3>
+                <div class="resource-detail-meta">
+                    <span class="story-type-chip">${escapeHtml(resourceLabel)}</span>
+                    ${resourceStatus ? `<span class="story-type-chip">${escapeHtml(resourceStatus)}</span>` : ""}
+                    ${resourceDate ? `<span class="story-type-chip">${escapeHtml(resourceDate)}</span>` : ""}
+                </div>
+            </div>
+            <div class="story-overview-card">
+                <h4>重點資訊</h4>
+                <div class="detail-summary">
+                    ${buildResourceSummary(resource)}
+                </div>
+            </div>
+            <div class="detail-action-bar">
+                <button class="primary-btn" id="open-related-modal-action" type="button" ${relatedCount ? "" : "disabled"}>
+                    <i class="fas fa-table-list" aria-hidden="true"></i> 查看相關 Resource${relatedCount ? ` (${relatedCount})` : ""}
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function buildRelatedTableView(resources, selectedNodeId) {
+    if (!resources.length) {
+        return '<div class="empty-state">找不到相關 Resource</div>';
+    }
+
+    const rows = resources.map((resource) => {
+        const nodeId = `${resource.resourceType}/${resource.id}`;
+        const isActive = nodeId === selectedNodeId ? "active" : "";
+        return `
+            <tr class="group-table-row related-table-row ${isActive}" data-resource-id="${nodeId}" tabindex="0">
+                <td>${escapeHtml(getDisplayDate(resource) || "-")}</td>
+                <td>${escapeHtml(getResourceCardTitle(resource))}</td>
+                <td>${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)}</td>
+                <td>${escapeHtml(getResourceStatus(resource) || "-")}</td>
+                <td>${escapeHtml(resource.id || "-")}</td>
+            </tr>
+        `;
+    }).join("");
+
+    return `
+        <div class="group-table-wrap">
+            <table class="group-table">
+                <thead>
+                    <tr>
+                        <th>日期</th>
+                        <th>標題</th>
+                        <th>類型</th>
+                        <th>狀態</th>
+                        <th>ID</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+function buildRelatedTimelineView(resources, selectedNodeId) {
+    if (!resources.length) {
+        return '<div class="timeline-empty">找不到相關 Resource</div>';
+    }
+
+    const items = resources.map((resource) => {
+        const nodeId = `${resource.resourceType}/${resource.id}`;
+        const color = TYPE_COLORS[resource.resourceType] || TYPE_COLORS.Unknown;
+        const isActive = nodeId === selectedNodeId ? "active" : "";
+        return `
+            <button type="button" class="timeline-item modal-timeline-item ${isActive}" data-resource-id="${nodeId}">
+                <span class="timeline-dot" style="background:${color}; box-shadow: 0 0 0 6px ${color}22;"></span>
+                <span class="timeline-content">
+                    <span class="timeline-date">${escapeHtml(getDisplayDate(resource) || "無日期")}</span>
+                    <span class="timeline-label">${escapeHtml(getResourceCardTitle(resource))}</span>
+                    <span class="timeline-type">${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)}${getResourceStatus(resource) ? ` · ${escapeHtml(getResourceStatus(resource))}` : ""}</span>
+                </span>
+            </button>
+        `;
+    }).join("");
+
+    return `
+        <div class="timeline-container modal-timeline-container">
+            <div class="timeline">${items}</div>
+        </div>
+    `;
+}
+
+function buildRelatedResourceDetail(resource) {
+    if (!resource) {
+        return '<div class="empty-state">請從左側選擇一筆相關 Resource</div>';
+    }
+
+    const nodeId = `${resource.resourceType}/${resource.id}`;
+    return `
+        <div class="related-detail-panel">
+            <div class="related-detail-header">
+                <span class="resource-detail-kicker">單筆明細</span>
+                <h3>${escapeHtml(getResourceCardTitle(resource))}</h3>
+                <div class="resource-detail-meta">
+                    <span class="story-type-chip">${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)}</span>
+                    ${getResourceStatus(resource) ? `<span class="story-type-chip">${escapeHtml(getResourceStatus(resource))}</span>` : ""}
+                </div>
+            </div>
+            <div class="story-overview-card">
+                <h4>重點資訊</h4>
+                <div class="detail-summary">
+                    ${buildResourceSummary(resource)}
+                </div>
+            </div>
+            <div class="detail-action-bar">
+                <button class="primary-btn" id="related-detail-open-resource" type="button" data-node-id="${escapeHtml(nodeId)}">
+                    <i class="fas fa-diagram-project" aria-hidden="true"></i> 在圖上定位
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = "table") {
+    if (!groupModal || !groupModalBody || !groupModalTitle || !groupModalMeta) {
+        return;
+    }
+
+    await hydrateConnectedResources(connectedNodeIds);
+    const resources = getConnectedResources(currentNodeId, connectedNodeIds);
+
+    activeModalMode = "related";
+    activeGroupModalView = view;
+    activeRelatedContext = {
+        sourceNodeId: currentNodeId,
+        resources,
+        selectedNodeId: resources[0] ? `${resources[0].resourceType}/${resources[0].id}` : null
+    };
+
+    groupModal.hidden = false;
+    document.body.classList.add("modal-open");
+    renderGroupModal();
+}
+
 function ensureResourceNodeInGraph(targetNodeId) {
     if (!targetNodeId || !nodes || nodes.get(targetNodeId)) {
         return Boolean(targetNodeId);
@@ -2331,17 +2482,10 @@ async function renderDetail(nodeId, connectedNodeIds) {
 
     await hydrateConnectedResources(connectedNodeIds);
     const connectedResources = getConnectedResources(nodeId, connectedNodeIds);
-    const storyHtml = buildResourceStory(resource, connectedResources);
-
-    // 構建關聯資源列表（分組顯示）
-    let relatedHtml = "";
-    if (connectedNodeIds && connectedNodeIds.size > 1) {
-        relatedHtml = await buildGroupedRelatedResources(nodeId, connectedNodeIds, "其他相關資源");
-    }
+    const detailHtml = buildCompactDetailPanel(resource, connectedResources);
 
     detailCard.innerHTML = `
-        ${storyHtml}
-        ${relatedHtml}
+        ${detailHtml}
         <div class="json-collapsible">
             <div class="json-header" tabindex="0" role="button" aria-expanded="false" aria-controls="json-content-resource">
                 <span>原始資料</span>
@@ -2373,32 +2517,15 @@ async function renderDetail(nodeId, connectedNodeIds) {
             }
         });
     }
-    
-    // 為資源卡片添加點擊事件
-    detailCard.querySelectorAll('.resource-card').forEach((card) => {
-        card.addEventListener('click', (e) => {
-            // 如果點擊的是展開/收合按鈕，不執行跳轉
-            if (e.target.closest('.resource-group-header')) {
-                return;
-            }
-            
-            const targetNodeId = card.getAttribute('data-node-id');
-            openResourceStory(targetNodeId);
-        });
-    });
-    
-    // 初始化資源分組的展開狀態（預設全部展開）
-    detailCard.querySelectorAll('.resource-group-content').forEach((content) => {
-        content.style.maxHeight = content.scrollHeight + 'px';
-    });
 
-    // 為故事脈絡項目添加點擊事件
-    detailCard.querySelectorAll('.story-resource-item, .semantic-resource-item').forEach((item) => {
-        item.addEventListener('click', () => {
-            const targetNodeId = item.getAttribute('data-node-id');
-            openResourceStory(targetNodeId);
+    const openRelatedButton = document.getElementById('open-related-modal-action');
+    if (openRelatedButton && connectedResources.length) {
+        openRelatedButton.addEventListener('click', () => {
+            openRelatedResourceModal(nodeId, connectedNodeIds, activeGroupModalView).catch((err) => {
+                console.error('openRelatedResourceModal 失敗:', err);
+            });
         });
-    });
+    }
 }
 
 
@@ -3397,6 +3524,7 @@ function openGroupModal(groupId, view = "table") {
         return;
     }
 
+    activeModalMode = "group";
     activeGroupModalId = groupId;
     activeGroupModalView = view;
     groupModal.hidden = false;
@@ -3411,10 +3539,68 @@ function closeGroupModal() {
 
     groupModal.hidden = true;
     document.body.classList.remove("modal-open");
+    activeModalMode = "group";
     activeGroupModalId = null;
+    activeRelatedContext = null;
 }
 
 function renderGroupModal() {
+    if (activeModalMode === "related") {
+        const sourceResource = activeRelatedContext ? resourceMap.get(activeRelatedContext.sourceNodeId) : null;
+        const resources = activeRelatedContext ? activeRelatedContext.resources : [];
+        const selectedResource = activeRelatedContext && activeRelatedContext.selectedNodeId
+            ? resources.find((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId)
+            : null;
+
+        groupModalTitle.textContent = sourceResource
+            ? `${getResourceCardTitle(sourceResource)} 的相關 Resource`
+            : "相關 Resource";
+        groupModalMeta.textContent = `${resources.length} 項相關資料`;
+        groupModalBody.innerHTML = `
+            <div class="group-modal-toolbar">
+                <button type="button" class="group-view-toggle ${activeGroupModalView === "table" ? "active" : ""}" data-view="table">表格</button>
+                <button type="button" class="group-view-toggle ${activeGroupModalView === "timeline" ? "active" : ""}" data-view="timeline">時間軸</button>
+            </div>
+            <div class="related-modal-layout">
+                <div class="related-modal-list">
+                    ${activeGroupModalView === "timeline"
+                        ? buildRelatedTimelineView(resources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null)
+                        : buildRelatedTableView(resources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null)}
+                </div>
+                <div class="related-modal-detail">
+                    ${buildRelatedResourceDetail(selectedResource)}
+                </div>
+            </div>
+        `;
+
+        groupModalBody.querySelectorAll(".group-view-toggle").forEach((button) => {
+            button.addEventListener("click", () => {
+                activeGroupModalView = button.dataset.view || "table";
+                renderGroupModal();
+            });
+        });
+
+        groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
+            element.addEventListener("click", () => {
+                if (!activeRelatedContext) {
+                    return;
+                }
+                activeRelatedContext.selectedNodeId = element.dataset.resourceId;
+                renderGroupModal();
+            });
+        });
+
+        const openResourceButton = document.getElementById("related-detail-open-resource");
+        if (openResourceButton) {
+            openResourceButton.addEventListener("click", () => {
+                const resourceId = openResourceButton.dataset.nodeId;
+                closeGroupModal();
+                openResourceStory(resourceId);
+            });
+        }
+        return;
+    }
+
     const group = RESOURCE_GROUPS[activeGroupModalId];
     if (!group || !groupModalBody || !groupModalTitle || !groupModalMeta) {
         return;
