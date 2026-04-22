@@ -226,70 +226,34 @@ const TYPE_COLORS = {
     Unknown: "#94a3b8"
 };
 
-const RESOURCE_GROUPS = {
-    clinical: {
-        label: "臨床",
-        icon: "fa-heart-pulse",
-        color: "#ef4444",
-        types: [
-            "AllergyIntolerance", "CarePlan", "CareTeam", "ClinicalImpression",
-            "Condition", "DetectedIssue", "FamilyMemberHistory", "Goal",
-            "Procedure", "RiskAssessment"
-        ]
-    },
-    diagnostics: {
-        label: "檢驗與診斷",
-        icon: "fa-vial-circle-check",
-        color: "#14b8a6",
-        types: ["BodyStructure", "DiagnosticReport", "ImagingStudy", "Media", "Observation", "Specimen"]
-    },
-    medications: {
-        label: "用藥",
-        icon: "fa-pills",
-        color: "#f97316",
-        types: ["Immunization", "MedicationAdministration", "MedicationDispense", "MedicationRequest", "MedicationStatement"]
-    },
-    workflow: {
-        label: "工作流程",
-        icon: "fa-diagram-project",
-        color: "#6366f1",
-        types: ["Appointment", "AppointmentResponse", "DeviceRequest", "NutritionOrder", "ServiceRequest", "Task", "VisionPrescription"]
-    },
-    financial: {
-        label: "財務",
-        icon: "fa-file-invoice-dollar",
-        color: "#ec4899",
-        types: [
-            "Account", "ChargeItem", "Claim", "ClaimResponse", "Coverage",
-            "CoverageEligibilityRequest", "CoverageEligibilityResponse", "EnrollmentRequest",
-            "EnrollmentResponse", "ExplanationOfBenefit", "Invoice", "PaymentNotice", "PaymentReconciliation"
-        ]
-    },
-    administrative: {
-        label: "行政與就醫",
-        icon: "fa-hospital-user",
-        color: "#0ea5e9",
-        types: ["Encounter", "EpisodeOfCare", "Flag"]
-    },
-    documents: {
-        label: "文件",
-        icon: "fa-folder-open",
-        color: "#64748b",
-        types: ["Composition", "DocumentManifest", "DocumentReference", "QuestionnaireResponse"]
-    },
-    others: {
-        label: "其他",
-        icon: "fa-boxes-stacked",
-        color: "#22c55e",
-        types: ["Communication", "CommunicationRequest", "DeviceUseStatement", "SupplyDelivery", "SupplyRequest"]
-    }
+const RESOURCE_GROUP_ICONS = {
+    Observation: "fa-stethoscope",
+    Condition: "fa-heart-pulse",
+    Procedure: "fa-user-doctor",
+    Encounter: "fa-hospital",
+    MedicationRequest: "fa-pills",
+    MedicationStatement: "fa-capsules",
+    DiagnosticReport: "fa-file-waveform",
+    Immunization: "fa-syringe",
+    AllergyIntolerance: "fa-triangle-exclamation",
+    CarePlan: "fa-notes-medical",
+    Goal: "fa-bullseye",
+    Claim: "fa-file-invoice-dollar",
+    ExplanationOfBenefit: "fa-receipt",
+    DocumentReference: "fa-folder-open",
+    QuestionnaireResponse: "fa-clipboard-list",
+    Appointment: "fa-calendar-check",
+    Task: "fa-list-check"
 };
 
-const RESOURCE_TYPE_TO_GROUP = Object.entries(RESOURCE_GROUPS).reduce((map, [groupId, config]) => {
-    config.types.forEach((type) => {
-        map[type] = groupId;
-    });
-    return map;
+const RESOURCE_GROUPS = RESOURCE_TYPES.reduce((groups, type) => {
+    groups[type] = {
+        label: RESOURCE_LABELS[type] || type,
+        icon: RESOURCE_GROUP_ICONS[type] || "fa-cubes",
+        color: TYPE_COLORS[type] || TYPE_COLORS.Unknown,
+        types: [type]
+    };
+    return groups;
 }, {});
 
 let client = null;
@@ -715,20 +679,13 @@ function renderStats() {
 
     const groupSummaryHtml = Object.entries(RESOURCE_GROUPS).map(([groupId, group]) => {
         const count = getGroupResources(groupId).length;
+        if (!count) {
+            return "";
+        }
         return `
             <div class="stat-item" style="border-color: ${group.color};">
                 <div class="stat-count">${count}</div>
                 <div class="stat-label">${group.label}</div>
-            </div>
-        `;
-    }).join("");
-
-    const statsHtml = RESOURCE_TYPES.map((type) => {
-        const count = (resourcesByType[type] || []).length;
-        return `
-            <div class="stat-item" style="border-color: ${TYPE_COLORS[type] || TYPE_COLORS.Unknown};">
-                <div class="stat-count">${count}</div>
-                <div class="stat-label">${RESOURCE_LABELS[type] || type} <span class="stat-type">${type}</span></div>
             </div>
         `;
     }).join("");
@@ -739,7 +696,6 @@ function renderStats() {
             <div class="stat-label">總資源數</div>
         </div>
         ${groupSummaryHtml}
-        ${statsHtml}
     `;
 }
 
@@ -1292,7 +1248,7 @@ function getGroupResources(groupId) {
         return [];
     }
 
-    return group.types.flatMap((type) => (resourcesByType[type] || []));
+    return resourcesByType[group.types[0]] || [];
 }
 
 function addNode(nodeId, resource, group, displayText, distance = 1) {
@@ -2673,10 +2629,10 @@ function renderInitialGroupOverview() {
         .join("");
 
     detailCard.innerHTML = `
-        <h3>資源群組總覽</h3>
+        <h3>Resource 類型總覽</h3>
         <div class="detail-summary">
             <div class="summary-row"><span>病人</span><span>${formatHumanName(patientResource.name?.[0])}</span></div>
-            <div class="summary-row"><span>群組數</span><span>${Object.keys(RESOURCE_GROUPS).filter((groupId) => getGroupResources(groupId).length > 0).length} 組</span></div>
+            <div class="summary-row"><span>類型數</span><span>${Object.keys(RESOURCE_GROUPS).filter((groupId) => getGroupResources(groupId).length > 0).length} 類</span></div>
         </div>
         <div class="group-overview-list">
             ${groupCards || '<div class="empty-state">目前沒有可用資源群組</div>'}
@@ -2722,7 +2678,7 @@ function renderGroupSummary(groupId) {
         <h3>${group.label}</h3>
         <div class="detail-summary">
             <div class="summary-row"><span>資源數</span><span>${resources.length} 項</span></div>
-            <div class="summary-row"><span>涵蓋類型</span><span>${group.types.map((type) => RESOURCE_LABELS[type] || type).join("、")}</span></div>
+            <div class="summary-row"><span>Resource Type</span><span>${group.types[0]}</span></div>
         </div>
         <button class="primary-btn group-summary-action" id="open-group-modal-action" type="button">
             <i class="fas fa-up-right-from-square" aria-hidden="true"></i> 以表格或時間軸檢視
@@ -2780,7 +2736,7 @@ function renderGroupModal() {
 
     const resources = sortResourcesByDate(getGroupResources(activeGroupModalId));
     groupModalTitle.textContent = `${group.label}資源`;
-    groupModalMeta.textContent = `${resources.length} 項 · ${group.types.map((type) => RESOURCE_LABELS[type] || type).join("、")}`;
+    groupModalMeta.textContent = `${resources.length} 項 · ${group.types[0]}`;
     groupModalBody.innerHTML = `
         <div class="group-modal-toolbar">
             <button type="button" class="group-view-toggle ${activeGroupModalView === "table" ? "active" : ""}" data-view="table">表格</button>
