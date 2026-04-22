@@ -256,6 +256,18 @@ const RESOURCE_GROUPS = RESOURCE_TYPES.reduce((groups, type) => {
     return groups;
 }, {});
 
+const EXPANDABLE_REFERENCE_TYPES = new Set([
+    ...RESOURCE_TYPES,
+    "Patient",
+    "Practitioner",
+    "Organization",
+    "Location",
+    "PractitionerRole",
+    "RelatedPerson",
+    "CareTeam",
+    "EpisodeOfCare"
+]);
+
 // ============================================
 // 方案一：Resource 語意原型與關聯優先序
 // ============================================
@@ -1670,7 +1682,7 @@ function collectAndAddReferences(sourceNodeId, resource, addedNodeIds = []) {
 
     references.forEach((ref) => {
         const normalized = normalizeReference(ref);
-        if (!normalized) {
+        if (!shouldMaterializeReferenceNode(normalized)) {
             return;
         }
         const [type, id] = normalized.split("/");
@@ -1681,6 +1693,52 @@ function collectAndAddReferences(sourceNodeId, resource, addedNodeIds = []) {
         }
         addEdge(sourceNodeId, normalized, "subject");
     });
+}
+
+function shouldMaterializeReferenceNode(normalizedReference) {
+    if (!normalizedReference || !normalizedReference.includes("/")) {
+        return false;
+    }
+
+    if (resourceMap.has(normalizedReference)) {
+        return true;
+    }
+
+    const [resourceType, resourceId] = normalizedReference.split("/");
+    if (!resourceType || !resourceId) {
+        return false;
+    }
+
+    return EXPANDABLE_REFERENCE_TYPES.has(resourceType);
+}
+
+function removeDanglingNode(nodeId) {
+    if (!nodeId || !nodes || !edges) {
+        return;
+    }
+
+    const edgeIdsToRemove = [];
+    edges.forEach((edge) => {
+        if (edge.from === nodeId || edge.to === nodeId) {
+            edgeIdsToRemove.push(edge.id);
+        }
+    });
+
+    if (edgeIdsToRemove.length) {
+        edges.remove(edgeIdsToRemove);
+    }
+
+    if (nodes.get(nodeId)) {
+        nodes.remove(nodeId);
+    }
+
+    nodeMeta.delete(nodeId);
+    resourceMap.delete(nodeId);
+    expandedNodes.delete(nodeId);
+
+    if (selectedNodeId === nodeId) {
+        selectedNodeId = null;
+    }
 }
 
 function normalizeReference(reference) {
@@ -2948,9 +3006,10 @@ async function renderDetail(nodeId, connectedNodeIds) {
         
         // 如果仍無法加載，顯示錯誤訊息
         if (!resource) {
+            removeDanglingNode(nodeId);
             detailCard.innerHTML = `
                 <h3>${nodeId}</h3>
-                <div class="empty-state">無法加載此引用資源的詳細資料。</div>
+                <div class="empty-state">這個節點沒有可用的 Resource 資料，已從圖上移除。</div>
             `;
             return;
         }
