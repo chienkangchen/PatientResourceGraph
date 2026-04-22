@@ -2039,20 +2039,115 @@ function buildRelatedFilterChips(filterTypes, selectedTypes) {
     `;
 }
 
-function matchesRelatedSearch(resource, query) {
-    if (!query) {
-        return true;
+function getEncounterDirectReferenceLabels(encounterResource) {
+    const labelMap = new Map();
+
+    extractReferences(encounterResource).forEach(({ target, label }) => {
+        if (!labelMap.has(target)) {
+            labelMap.set(target, new Set());
+        }
+        labelMap.get(target).add(label);
+    });
+
+    return labelMap;
+}
+
+function buildEncounterRelatedGroups(encounterResource, resources) {
+    const directLabelMap = getEncounterDirectReferenceLabels(encounterResource);
+    const encounterNodeId = `${encounterResource.resourceType}/${encounterResource.id}`;
+    const groupDefinitions = [
+        { id: "subject", title: "就診對象", description: "這次就醫直接對應的病人或照護對象" },
+        { id: "participants", title: "參與人員", description: "直接參與這次就醫的醫護或相關人員" },
+        { id: "organization", title: "所屬機構", description: "承接或提供這次就醫服務的機構" },
+        { id: "diagnosis", title: "診斷與原因", description: "這次就醫所記錄的診斷或就醫原因" },
+        { id: "locations", title: "就醫地點", description: "與這次就醫直接相關的位置或場域" },
+        { id: "observations", title: "檢查與報告", description: "在這次就醫中產生的觀察、檢驗與報告" },
+        { id: "actions", title: "處置與醫囑", description: "在這次就醫中執行或開立的處置與醫囑" },
+        { id: "administration", title: "行政與保險", description: "這次就醫衍生的申報、保險或行政資料" },
+        { id: "other", title: "其他相關資料", description: "其他透過 Encounter 關聯但不屬於以上分類的資料" }
+    ];
+
+    const groups = groupDefinitions.map((definition) => ({ ...definition, resources: [] }));
+    const groupMap = new Map(groups.map((group) => [group.id, group]));
+
+    const resolveGroupId = (resource) => {
+        const nodeId = `${resource.resourceType}/${resource.id}`;
+        const directLabels = directLabelMap.get(nodeId) || new Set();
+
+        if (directLabels.has("subject")) return "subject";
+        if (directLabels.has("individual") || directLabels.has("participant")) return "participants";
+        if (directLabels.has("serviceProvider") || directLabels.has("managingOrganization")) return "organization";
+        if (directLabels.has("condition") || directLabels.has("reasonReference") || directLabels.has("diagnosis")) return "diagnosis";
+        if (directLabels.has("location")) return "locations";
+
+        const referenceLabels = extractReferences(resource)
+            .filter(({ target }) => target === encounterNodeId)
+            .map(({ label }) => label);
+
+        if (referenceLabels.includes("encounter") || referenceLabels.includes("context")) {
+            if (["Observation", "DiagnosticReport"].includes(resource.resourceType)) {
+                return "observations";
+            }
+            if (["Procedure", "MedicationRequest", "MedicationStatement", "ServiceRequest", "CarePlan", "Immunization"].includes(resource.resourceType)) {
+                return "actions";
+            }
+            if (["Claim", "ExplanationOfBenefit", "Coverage", "Account"].includes(resource.resourceType)) {
+                return "administration";
+            }
+            if (["Condition", "AllergyIntolerance"].includes(resource.resourceType)) {
+                return "diagnosis";
+            }
+        }
+
+        return "other";
+    };
+
+    resources.forEach((resource) => {
+        const groupId = resolveGroupId(resource);
+        const targetGroup = groupMap.get(groupId) || groupMap.get("other");
+        targetGroup.resources.push(resource);
+    });
+
+    return groups.filter((group) => group.resources.length > 0);
+}
+
+function buildEncounterRelatedListView(groups, selectedNodeId) {
+    if (!groups.length) {
+        return '<div class="empty-state">找不到符合條件的相關 Resource</div>';
     }
 
-    const searchableText = [
-        getResourceCardTitle(resource),
-        resource.resourceType,
-        getResourceStatus(resource),
-        resource.id,
-        getDisplayDate(resource)
-    ].filter(Boolean).join(" ").toLowerCase();
-
-    return searchableText.includes(query.trim().toLowerCase());
+    return `
+        <div class="related-group-list">
+            ${groups.map((group) => `
+                <section class="related-group-section">
+                    <div class="related-group-header">
+                        <div>
+                            <h4>${escapeHtml(group.title)}</h4>
+                            <p>${escapeHtml(group.description)}</p>
+                        </div>
+                        <span class="related-group-count">${group.resources.length}</span>
+                    </div>
+                    <div class="related-group-items">
+                        ${group.resources.map((resource) => {
+                            const nodeId = `${resource.resourceType}/${resource.id}`;
+                            const isActive = nodeId === selectedNodeId ? "active" : "";
+                            const dateText = getDisplayDate(resource) || "無日期";
+                            const statusText = getResourceStatus(resource) || "未標示狀態";
+                            return `
+                                <button type="button" class="related-group-item ${isActive}" data-resource-id="${escapeHtml(nodeId)}">
+                                    <span class="related-group-item-main">
+                                        <span class="related-group-item-title">${escapeHtml(getResourceCardTitle(resource))}</span>
+                                        <span class="related-group-item-meta">${escapeHtml(resource.resourceType || "-")} · ${escapeHtml(dateText)} · ${escapeHtml(statusText)}</span>
+                                    </span>
+                                    <span class="related-group-item-id">${escapeHtml(resource.id || "-")}</span>
+                                </button>
+                            `;
+                        }).join("")}
+                    </div>
+                </section>
+            `).join("")}
+        </div>
+    `;
 }
 
 function buildRelatedTableView(resources, selectedNodeId) {
@@ -2137,7 +2232,6 @@ async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = 
         sourceNodeId: currentNodeId,
         resources,
         selectedTypes: [],
-        searchQuery: "",
         selectedNodeId: resources[0] ? `${resources[0].resourceType}/${resources[0].id}` : null
     };
 
@@ -3566,17 +3660,20 @@ function renderGroupModal() {
         const sourceResource = activeRelatedContext ? resourceMap.get(activeRelatedContext.sourceNodeId) : null;
         const resources = activeRelatedContext ? sortResourcesByDate(activeRelatedContext.resources) : [];
         const selectedTypes = activeRelatedContext?.selectedTypes || [];
-        const searchQuery = activeRelatedContext?.searchQuery || "";
         const filterTypes = Array.from(new Set(resources.map((item) => item.resourceType).filter(Boolean))).sort();
         const selectedTypeSet = new Set(selectedTypes);
-        const filteredResources = resources.filter((item) => {
-            const matchesType = !selectedTypeSet.size || selectedTypeSet.has(item.resourceType);
-            return matchesType && matchesRelatedSearch(item, searchQuery);
-        });
+        const filteredResources = resources.filter((item) => !selectedTypeSet.size || selectedTypeSet.has(item.resourceType));
 
         if (activeRelatedContext && (!activeRelatedContext.selectedNodeId || !filteredResources.some((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId))) {
             activeRelatedContext.selectedNodeId = filteredResources[0] ? `${filteredResources[0].resourceType}/${filteredResources[0].id}` : null;
         }
+
+        const groupedResources = sourceResource?.resourceType === "Encounter"
+            ? buildEncounterRelatedGroups(sourceResource, filteredResources)
+            : [];
+        const listMarkup = sourceResource?.resourceType === "Encounter"
+            ? buildEncounterRelatedListView(groupedResources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null)
+            : buildRelatedTableView(filteredResources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null);
 
         const selectedResource = activeRelatedContext && activeRelatedContext.selectedNodeId
             ? filteredResources.find((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId)
@@ -3592,14 +3689,10 @@ function renderGroupModal() {
                     <span class="related-filter-label">ResourceType 篩選</span>
                     ${buildRelatedFilterChips(filterTypes, selectedTypes)}
                 </div>
-                <label class="related-search-field">
-                    <span class="related-filter-label">搜尋</span>
-                    <input id="related-resource-search" class="related-search-input" type="search" placeholder="搜尋標題、類型、狀態或 ID" value="${escapeHtml(searchQuery)}" />
-                </label>
             </div>
             <div class="related-modal-layout">
                 <div class="related-modal-list">
-                    ${buildRelatedTableView(filteredResources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null)}
+                    ${listMarkup}
                 </div>
                 <div class="related-modal-detail">
                     ${buildRelatedResourceDetail(selectedResource)}
@@ -3633,17 +3726,6 @@ function renderGroupModal() {
                 renderGroupModal();
             });
         });
-
-        const relatedSearchInput = document.getElementById("related-resource-search");
-        if (relatedSearchInput) {
-            relatedSearchInput.addEventListener("input", () => {
-                if (!activeRelatedContext) {
-                    return;
-                }
-                activeRelatedContext.searchQuery = relatedSearchInput.value || "";
-                renderGroupModal();
-            });
-        }
 
         groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
             element.addEventListener("click", () => {
