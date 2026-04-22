@@ -1089,6 +1089,7 @@ body.modal-open {
 .group-modal-body {
     padding: 20px 24px 24px;
     overflow: auto;
+    position: relative;
 }
 
 .group-modal-toolbar {
@@ -1220,6 +1221,9 @@ body.modal-open {
 
     .related-modal-detail {
         padding: 16px;
+        position: static;
+        max-height: none;
+        overflow: visible;
     }
 
 }
@@ -1478,6 +1482,10 @@ body.modal-open {
     min-width: 0;
 }
 
+.related-modal-list {
+    min-height: 0;
+}
+
 .related-group-list {
     display: flex;
     flex-direction: column;
@@ -1592,6 +1600,11 @@ body.modal-open {
     border-radius: 18px;
     background: #ffffff;
     padding: 18px;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: calc(100vh - 220px);
+    overflow: auto;
 }
 
 .related-table-row.active,

@@ -1705,6 +1705,145 @@ function getReferenceDisplayValue(value) {
     return "";
 }
 
+function getCodeableConceptDisplay(concept) {
+    if (!concept) {
+        return "";
+    }
+    if (Array.isArray(concept)) {
+        for (const item of concept) {
+            const display = getCodeableConceptDisplay(item);
+            if (display) {
+                return display;
+            }
+        }
+        return "";
+    }
+    return concept.text || getCodingDisplay(concept.coding) || "";
+}
+
+function getReferenceTitle(referenceValue) {
+    if (!referenceValue) {
+        return "";
+    }
+
+    if (Array.isArray(referenceValue)) {
+        return referenceValue
+            .map((item) => getReferenceTitle(item))
+            .filter(Boolean)
+            .join("、");
+    }
+
+    if (typeof referenceValue === "string") {
+        const normalized = normalizeReference(referenceValue);
+        if (normalized && resourceMap.has(normalized)) {
+            return getResourceCardTitle(resourceMap.get(normalized));
+        }
+        return referenceValue;
+    }
+
+    if (referenceValue.display) {
+        return referenceValue.display;
+    }
+
+    if (referenceValue.reference) {
+        const normalized = normalizeReference(referenceValue.reference);
+        if (normalized && resourceMap.has(normalized)) {
+            return getResourceCardTitle(resourceMap.get(normalized));
+        }
+        return referenceValue.reference;
+    }
+
+    return getReferenceDisplayValue(referenceValue);
+}
+
+function getTelecomValue(resource, system) {
+    return resource?.telecom?.find((item) => item.system === system)?.value || "";
+}
+
+function formatAddress(address) {
+    if (!address) {
+        return "";
+    }
+
+    return [
+        ...(Array.isArray(address.line) ? address.line : []),
+        address.city,
+        address.state,
+        address.postalCode,
+        address.country
+    ].filter(Boolean).join(", ");
+}
+
+function formatPeriodRange(period) {
+    if (!period) {
+        return "";
+    }
+
+    const start = formatDate(period.start);
+    const end = formatDate(period.end);
+    if (start !== "-" && end !== "-") {
+        return `${start} ~ ${end}`;
+    }
+    if (start !== "-") {
+        return start;
+    }
+    if (end !== "-") {
+        return end;
+    }
+    return "";
+}
+
+function formatMoney(money) {
+    if (!money) {
+        return "";
+    }
+    const value = money.value !== undefined && money.value !== null ? money.value : "";
+    const currency = money.currency || "";
+    return `${value} ${currency}`.trim();
+}
+
+function getMedicationDisplay(resource) {
+    return resource?.medicationCodeableConcept?.text
+        || getCodingDisplay(resource?.medicationCodeableConcept?.coding)
+        || getCodeableConceptDisplay(resource?.medication?.concept)
+        || getReferenceTitle(resource?.medicationReference)
+        || getReferenceTitle(resource?.medication)
+        || "";
+}
+
+function calculateAge(birthDate) {
+    if (!birthDate) {
+        return "";
+    }
+
+    const today = new Date();
+    const birth = new Date(birthDate);
+    if (Number.isNaN(birth.getTime())) {
+        return "";
+    }
+
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+        age -= 1;
+    }
+    return age >= 0 ? `${age} 歲` : "";
+}
+
+function pushSummaryRow(rows, label, value) {
+    if (!value && value !== 0 && value !== false) {
+        return;
+    }
+    rows.push(`<div class="summary-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(String(value))}</span></div>`);
+}
+
+function pushCountRow(rows, label, collection) {
+    if (!collection || !collection.length) {
+        return;
+    }
+    pushSummaryRow(rows, label, `${collection.length} 項`);
+}
+
 function collectStoryFacts(resource) {
     const facts = [];
     const pushFact = (label, value) => {
@@ -2039,10 +2178,10 @@ function buildRelatedFilterChips(filterTypes, selectedTypes) {
     `;
 }
 
-function getEncounterDirectReferenceLabels(encounterResource) {
+function getDirectReferenceLabels(resource) {
     const labelMap = new Map();
 
-    extractReferences(encounterResource).forEach(({ target, label }) => {
+    extractReferences(resource).forEach(({ target, label }) => {
         if (!labelMap.has(target)) {
             labelMap.set(target, new Set());
         }
@@ -2052,50 +2191,231 @@ function getEncounterDirectReferenceLabels(encounterResource) {
     return labelMap;
 }
 
-function buildEncounterRelatedGroups(encounterResource, resources) {
-    const directLabelMap = getEncounterDirectReferenceLabels(encounterResource);
-    const encounterNodeId = `${encounterResource.resourceType}/${encounterResource.id}`;
-    const groupDefinitions = [
-        { id: "subject", title: "就診對象", description: "這次就醫直接對應的病人或照護對象" },
-        { id: "participants", title: "參與人員", description: "直接參與這次就醫的醫護或相關人員" },
-        { id: "organization", title: "所屬機構", description: "承接或提供這次就醫服務的機構" },
-        { id: "diagnosis", title: "診斷與原因", description: "這次就醫所記錄的診斷或就醫原因" },
-        { id: "locations", title: "就醫地點", description: "與這次就醫直接相關的位置或場域" },
-        { id: "observations", title: "檢查與報告", description: "在這次就醫中產生的觀察、檢驗與報告" },
-        { id: "actions", title: "處置與醫囑", description: "在這次就醫中執行或開立的處置與醫囑" },
-        { id: "administration", title: "行政與保險", description: "這次就醫衍生的申報、保險或行政資料" },
-        { id: "other", title: "其他相關資料", description: "其他透過 Encounter 關聯但不屬於以上分類的資料" }
-    ];
+function getReverseReferenceLabels(sourceNodeId, resource) {
+    return new Set(
+        extractReferences(resource)
+            .filter(({ target }) => target === sourceNodeId)
+            .map(({ label }) => label)
+    );
+}
+
+function getRelatedGroupDefinitions(resourceType) {
+    const baseDefinitions = {
+        subject: { id: "subject", title: "關聯對象", description: "直接對應的病人、對象或主要受益者" },
+        context: { id: "context", title: "所屬脈絡", description: "和這筆資料同一照護情境、就醫或流程的資料" },
+        people: { id: "people", title: "人員與機構", description: "參與、開立、管理或執行的醫護與機構" },
+        findings: { id: "findings", title: "診斷與臨床依據", description: "與此資料相關的診斷、問題、原因與證據" },
+        reports: { id: "reports", title: "檢查、結果與報告", description: "觀察結果、診斷報告與支持性資料" },
+        actions: { id: "actions", title: "處置、醫囑與後續行動", description: "由此資料衍生或相關的醫囑、處置與照護安排" },
+        financial: { id: "financial", title: "財務與保險", description: "與申報、保險、給付或帳務相關的資料" },
+        locations: { id: "locations", title: "地點與服務場域", description: "和此資料直接相關的位置或服務場域" },
+        documents: { id: "documents", title: "文件與溝通", description: "與此資料有關的文件、問卷與溝通紀錄" },
+        other: { id: "other", title: "其他相關資料", description: "其他有關聯但不屬於上述分類的資源" }
+    };
+
+    switch (resourceType) {
+        case "Encounter":
+            return [
+                { ...baseDefinitions.subject, title: "就診對象", description: "這次就醫直接對應的病人或照護對象" },
+                { ...baseDefinitions.people, title: "參與人員與機構", description: "直接參與或承接這次就醫的醫護與機構" },
+                { ...baseDefinitions.findings, title: "診斷與原因", description: "這次就醫所記錄的診斷、主訴或醫療原因" },
+                { ...baseDefinitions.reports, title: "檢查與報告", description: "在這次就醫中產生的觀察、檢驗與診斷報告" },
+                { ...baseDefinitions.actions, title: "處置與醫囑", description: "在這次就醫中執行或開立的處置、用藥與醫令" },
+                { ...baseDefinitions.financial, title: "行政與保險", description: "這次就醫衍生的申報、保險或行政資料" },
+                { ...baseDefinitions.locations, title: "就醫地點", description: "與這次就醫直接相關的位置或場域" },
+                baseDefinitions.other
+            ];
+        case "Patient":
+            return [
+                { ...baseDefinitions.context, title: "就醫與照護歷程", description: "此病人的就醫紀錄、照護事件與整體脈絡" },
+                { ...baseDefinitions.findings, title: "診斷與問題", description: "此病人的診斷、過敏、風險與臨床問題" },
+                { ...baseDefinitions.reports, title: "檢查與報告", description: "此病人的觀察結果、檢驗與診斷報告" },
+                { ...baseDefinitions.actions, title: "處置與用藥", description: "此病人的處置、用藥、醫囑與照護計畫" },
+                { ...baseDefinitions.people, title: "醫護與機構", description: "與此病人直接相關的醫護人員與機構" },
+                { ...baseDefinitions.financial, title: "財務與保險", description: "此病人的保險、申報、帳務與給付資料" },
+                { ...baseDefinitions.documents, title: "文件與問卷", description: "病人相關的文件、問卷與溝通紀錄" },
+                baseDefinitions.other
+            ];
+        case "Observation":
+            return [
+                { ...baseDefinitions.context, title: "所屬就醫與情境", description: "這筆觀察所屬的就醫、流程或照護情境" },
+                { ...baseDefinitions.findings, title: "相關診斷與依據", description: "和這筆觀察互相支撐的診斷、原因與臨床依據" },
+                { ...baseDefinitions.reports, title: "結果來源與相關報告", description: "和此觀察同層級或上層的結果、面板與報告" },
+                { ...baseDefinitions.actions, title: "後續處置與醫囑", description: "這筆觀察後續引出的處置、用藥與醫令" },
+                { ...baseDefinitions.people, title: "執行人員與機構", description: "執行、判讀或管理這筆觀察的人員與機構" },
+                { ...baseDefinitions.financial, title: "財務與行政", description: "和此觀察相關的申報、帳務或保險資料" },
+                baseDefinitions.other
+            ];
+        case "Condition":
+            return [
+                { ...baseDefinitions.context, title: "所屬就醫與情境", description: "這筆診斷或問題所處的就醫與照護脈絡" },
+                { ...baseDefinitions.findings, title: "問題本體與臨床依據", description: "與此診斷直接相關的原因、症狀、證據與其他問題" },
+                { ...baseDefinitions.reports, title: "檢查與報告", description: "支持、追蹤或說明此診斷的觀察與報告" },
+                { ...baseDefinitions.actions, title: "處置與用藥", description: "針對此診斷採取的處置、醫令與用藥" },
+                { ...baseDefinitions.people, title: "醫護與機構", description: "對此問題進行記錄、處理或管理的人員與機構" },
+                { ...baseDefinitions.financial, title: "財務與保險", description: "和此問題相關的申報、給付或保險資料" },
+                baseDefinitions.other
+            ];
+        case "Procedure":
+            return [
+                { ...baseDefinitions.context, title: "所屬就醫與脈絡", description: "這項處置所在的就醫、照護流程與上下文" },
+                { ...baseDefinitions.findings, title: "處置原因與診斷", description: "促成此處置的診斷、原因與臨床依據" },
+                { ...baseDefinitions.people, title: "執行人員與地點", description: "執行、參與或承接此處置的人員、機構與場域" },
+                { ...baseDefinitions.reports, title: "相關檢查與報告", description: "與此處置相關的結果、報告與後續觀察" },
+                { ...baseDefinitions.actions, title: "後續醫囑與照護", description: "此處置後續帶出的醫囑、用藥與照護安排" },
+                { ...baseDefinitions.financial, title: "財務與保險", description: "和此處置相關的申報、帳務或保險資料" },
+                baseDefinitions.other
+            ];
+        case "MedicationRequest":
+        case "MedicationStatement":
+            return [
+                { ...baseDefinitions.context, title: "開立脈絡", description: "這筆用藥所在的就醫、照護情境與工作流程" },
+                { ...baseDefinitions.findings, title: "用藥原因與診斷", description: "支持此用藥的診斷、問題與臨床依據" },
+                { ...baseDefinitions.people, title: "開立者與執行單位", description: "開立、管理、配發或執行用藥的人員與機構" },
+                { ...baseDefinitions.actions, title: "給藥與後續處置", description: "與此用藥相關的給藥、配藥與後續照護動作" },
+                { ...baseDefinitions.reports, title: "相關檢查與報告", description: "與此用藥有關的檢查結果、監測資料與報告" },
+                { ...baseDefinitions.financial, title: "保險與財務", description: "與此用藥有關的保險、申報與帳務資訊" },
+                baseDefinitions.other
+            ];
+        case "DiagnosticReport":
+            return [
+                { ...baseDefinitions.context, title: "報告所屬情境", description: "此報告所屬的就醫事件、照護流程與請求來源" },
+                { ...baseDefinitions.reports, title: "報告結果與觀察", description: "報告內或與報告直接相關的觀察結果與支援資料" },
+                { ...baseDefinitions.findings, title: "臨床結論與診斷", description: "此報告的結論、判讀與臨床問題脈絡" },
+                { ...baseDefinitions.people, title: "判讀人員與機構", description: "執行、出具與判讀此報告的人員與機構" },
+                { ...baseDefinitions.actions, title: "後續醫囑與處置", description: "由此報告結果帶出的醫令、處置與照護安排" },
+                { ...baseDefinitions.documents, title: "文件與附件", description: "此報告相關的文件、影像與附件資料" },
+                baseDefinitions.other
+            ];
+        case "Claim":
+        case "ExplanationOfBenefit":
+            return [
+                { ...baseDefinitions.subject, title: "申報對象", description: "這筆財務資料直接對應的病人、受益者或主體" },
+                { ...baseDefinitions.context, title: "就醫與臨床脈絡", description: "這筆申報所連結的就醫、診斷、醫令與照護情境" },
+                { ...baseDefinitions.people, title: "承辦人員與機構", description: "負責提供、申報、審核或支付的人員與機構" },
+                { ...baseDefinitions.actions, title: "申報項目與服務內容", description: "這筆申報所對應的處置、用藥、服務與項目內容" },
+                { ...baseDefinitions.financial, title: "保險、支付與審核", description: "與此資料相關的保險、支付、給付與申報結果" },
+                baseDefinitions.other
+            ];
+        default:
+            return [
+                baseDefinitions.subject,
+                baseDefinitions.context,
+                baseDefinitions.people,
+                baseDefinitions.findings,
+                baseDefinitions.reports,
+                baseDefinitions.actions,
+                baseDefinitions.financial,
+                baseDefinitions.documents,
+                baseDefinitions.locations,
+                baseDefinitions.other
+            ];
+    }
+}
+
+function buildEncounterRelatedGroups(sourceResource, resources) {
+    const sourceNodeId = `${sourceResource.resourceType}/${sourceResource.id}`;
+    const directLabelMap = getDirectReferenceLabels(sourceResource);
+    const groupDefinitions = getRelatedGroupDefinitions(sourceResource.resourceType);
 
     const groups = groupDefinitions.map((definition) => ({ ...definition, resources: [] }));
     const groupMap = new Map(groups.map((group) => [group.id, group]));
 
+    const typeGroups = {
+        subject: new Set(["Patient", "Group"]),
+        context: new Set(["Encounter", "EpisodeOfCare", "Appointment", "Flag"]),
+        people: new Set(["Practitioner", "PractitionerRole", "Organization", "CareTeam", "RelatedPerson"]),
+        findings: new Set(["Condition", "AllergyIntolerance", "DetectedIssue", "ClinicalImpression", "RiskAssessment", "FamilyMemberHistory"]),
+        reports: new Set(["Observation", "DiagnosticReport", "Specimen", "ImagingStudy", "BodyStructure", "Media"]),
+        actions: new Set(["Procedure", "MedicationRequest", "MedicationStatement", "MedicationAdministration", "MedicationDispense", "ServiceRequest", "CarePlan", "Immunization", "Task", "DeviceRequest", "SupplyRequest", "CommunicationRequest", "Communication"]),
+        financial: new Set(["Claim", "ExplanationOfBenefit", "Coverage", "Account", "ClaimResponse", "Invoice", "ChargeItem", "PaymentNotice", "PaymentReconciliation", "CoverageEligibilityRequest", "CoverageEligibilityResponse", "EnrollmentRequest", "EnrollmentResponse"]),
+        documents: new Set(["DocumentReference", "Composition", "QuestionnaireResponse"]),
+        locations: new Set(["Location"])
+    };
+
+    const labelToGroupId = {
+        subject: "subject",
+        patient: "subject",
+        beneficiary: "subject",
+        subscriber: "subject",
+        individual: "people",
+        participant: "people",
+        performer: "people",
+        requester: "people",
+        recorder: "people",
+        asserter: "people",
+        author: "people",
+        resultsInterpreter: "people",
+        enterer: "people",
+        provider: "people",
+        serviceProvider: "people",
+        managingOrganization: "people",
+        generalPractitioner: "people",
+        insurer: "financial",
+        payee: "financial",
+        encounter: "context",
+        context: "context",
+        episodeOfCare: "context",
+        appointment: "context",
+        basedOn: "context",
+        partOf: "context",
+        condition: "findings",
+        diagnosis: "findings",
+        reasonReference: "findings",
+        reason: "findings",
+        focus: "findings",
+        evidence: "findings",
+        result: "reports",
+        report: "reports",
+        derivedFrom: "reports",
+        hasMember: "reports",
+        conclusionCode: "reports",
+        supportingInfo: "reports",
+        procedure: "actions",
+        request: "actions",
+        prescription: "actions",
+        originalPrescription: "actions",
+        followUp: "actions",
+        recommendation: "actions",
+        medication: "actions",
+        medicationReference: "actions",
+        used: "actions",
+        insurance: "financial",
+        coverage: "financial",
+        account: "financial",
+        claim: "financial",
+        claimResponse: "financial",
+        payment: "financial",
+        location: "locations",
+        facility: "locations",
+        destination: "locations",
+        origin: "locations",
+        form: "documents",
+        communication: "documents"
+    };
+
     const resolveGroupId = (resource) => {
         const nodeId = `${resource.resourceType}/${resource.id}`;
         const directLabels = directLabelMap.get(nodeId) || new Set();
+        const reverseLabels = getReverseReferenceLabels(sourceNodeId, resource);
 
-        if (directLabels.has("subject")) return "subject";
-        if (directLabels.has("individual") || directLabels.has("participant")) return "participants";
-        if (directLabels.has("serviceProvider") || directLabels.has("managingOrganization")) return "organization";
-        if (directLabels.has("condition") || directLabels.has("reasonReference") || directLabels.has("diagnosis")) return "diagnosis";
-        if (directLabels.has("location")) return "locations";
+        for (const label of directLabels) {
+            const match = labelToGroupId[label];
+            if (match && groupMap.has(match)) {
+                return match;
+            }
+        }
 
-        const referenceLabels = extractReferences(resource)
-            .filter(({ target }) => target === encounterNodeId)
-            .map(({ label }) => label);
+        for (const label of reverseLabels) {
+            const match = labelToGroupId[label];
+            if (match && groupMap.has(match)) {
+                return match;
+            }
+        }
 
-        if (referenceLabels.includes("encounter") || referenceLabels.includes("context")) {
-            if (["Observation", "DiagnosticReport"].includes(resource.resourceType)) {
-                return "observations";
-            }
-            if (["Procedure", "MedicationRequest", "MedicationStatement", "ServiceRequest", "CarePlan", "Immunization"].includes(resource.resourceType)) {
-                return "actions";
-            }
-            if (["Claim", "ExplanationOfBenefit", "Coverage", "Account"].includes(resource.resourceType)) {
-                return "administration";
-            }
-            if (["Condition", "AllergyIntolerance"].includes(resource.resourceType)) {
-                return "diagnosis";
+        for (const [groupId, types] of Object.entries(typeGroups)) {
+            if (types.has(resource.resourceType) && groupMap.has(groupId)) {
+                return groupId;
             }
         }
 
@@ -2649,6 +2969,9 @@ function buildResourceSummary(resource) {
 
     // 根據不同資源類型顯示特定資訊
     switch (resourceType) {
+        case "Patient":
+            buildPatientSummary(resource, rows);
+            break;
         case "Observation":
             buildObservationSummary(resource, rows);
             break;
@@ -2679,6 +3002,12 @@ function buildResourceSummary(resource) {
             break;
         case "Practitioner":
             buildPractitionerSummary(resource, rows);
+            break;
+        case "Claim":
+            buildClaimSummary(resource, rows);
+            break;
+        case "ExplanationOfBenefit":
+            buildExplanationOfBenefitSummary(resource, rows);
             break;
         default:
             buildGenericSummary(resource, rows);
@@ -2857,7 +3186,7 @@ function getResourceCardTitle(resource) {
             return resource.code?.text || getCodingDisplay(resource.code?.coding) || "處置";
         case "MedicationStatement":
         case "MedicationRequest":
-            return resource.medicationCodeableConcept?.text || getCodingDisplay(resource.medicationCodeableConcept?.coding) || "藥物";
+            return getMedicationDisplay(resource) || "藥物";
         case "Encounter":
             return resource.type?.[0]?.text || getCodingDisplay(resource.type?.[0]?.coding) || "就醫";
         case "Patient":
@@ -2872,6 +3201,10 @@ function getResourceCardTitle(resource) {
             return resource.name || "組織";
         case "Practitioner":
             return formatHumanName(resource.name?.[0]) || "醫護人員";
+        case "Claim":
+            return getCodeableConceptDisplay(resource.type) || getCodeableConceptDisplay(resource.subType) || "醫療申報";
+        case "ExplanationOfBenefit":
+            return getCodeableConceptDisplay(resource.type) || getCodeableConceptDisplay(resource.subType) || "給付說明";
         default:
             return resource.id || resType;
     }
@@ -3097,6 +3430,25 @@ async function renderInitialResourceList() {
 }
 
 // Observation 專用摘要
+function buildPatientSummary(resource, rows) {
+    pushSummaryRow(rows, "姓名", formatHumanName(resource.name?.[0]));
+    if (resource.active !== undefined) {
+        pushSummaryRow(rows, "啟用狀態", resource.active ? "啟用中" : "停用");
+    }
+
+    const genderMap = { male: "男", female: "女", other: "其他", unknown: "未知" };
+    pushSummaryRow(rows, "性別", genderMap[resource.gender] || resource.gender);
+    pushSummaryRow(rows, "生日", resource.birthDate);
+    pushSummaryRow(rows, "年齡", calculateAge(resource.birthDate));
+    pushSummaryRow(rows, "電話", getTelecomValue(resource, "phone"));
+    pushSummaryRow(rows, "Email", getTelecomValue(resource, "email"));
+    pushSummaryRow(rows, "地址", formatAddress(resource.address?.[0]));
+    pushSummaryRow(rows, "婚姻狀態", getCodeableConceptDisplay(resource.maritalStatus));
+    pushSummaryRow(rows, "主要語言", getCodeableConceptDisplay(resource.communication?.find((item) => item.preferred)?.language) || getCodeableConceptDisplay(resource.communication?.[0]?.language));
+    pushSummaryRow(rows, "主要照護者", getReferenceTitle(resource.generalPractitioner));
+    pushSummaryRow(rows, "管理機構", getReferenceTitle(resource.managingOrganization));
+}
+
 function buildObservationSummary(resource, rows) {
     // 檢查項目名稱
     if (resource.code) {
@@ -3136,8 +3488,12 @@ function buildObservationSummary(resource, rows) {
     
     // 狀態
     if (resource.status) {
-        rows.push(`<div class="summary-row"><span>狀態</span><span>${resource.status}</span></div>`);
+        pushSummaryRow(rows, "狀態", resource.status);
     }
+
+    pushSummaryRow(rows, "解讀", getCodeableConceptDisplay(resource.interpretation));
+    pushSummaryRow(rows, "執行者", getReferenceTitle(resource.performer));
+    pushSummaryRow(rows, "檢體", getReferenceTitle(resource.specimen));
     
     // 檢查時間
     if (resource.effectiveDateTime) {
@@ -3189,6 +3545,11 @@ function buildConditionSummary(resource, rows) {
     if (resource.recordedDate) {
         rows.push(`<div class="summary-row"><span>記錄日期</span><span>${formatDate(resource.recordedDate)}</span></div>`);
     }
+
+    pushSummaryRow(rows, "部位", getCodeableConceptDisplay(resource.bodySite));
+    pushSummaryRow(rows, "所屬就醫", getReferenceTitle(resource.encounter));
+    pushSummaryRow(rows, "判定者", getReferenceTitle(resource.asserter));
+    pushCountRow(rows, "支持證據", resource.evidence);
 }
 
 // Procedure 專用摘要
@@ -3218,6 +3579,13 @@ function buildProcedureSummary(resource, rows) {
         const category = resource.category.text || getCodingDisplay(resource.category.coding) || "-";
         rows.push(`<div class="summary-row"><span>類別</span><span>${category}</span></div>`);
     }
+
+    pushSummaryRow(rows, "所屬就醫", getReferenceTitle(resource.encounter));
+    pushSummaryRow(rows, "執行者", getReferenceTitle(resource.performer?.map((item) => item.actor)));
+    pushSummaryRow(rows, "地點", getReferenceTitle(resource.location));
+    pushSummaryRow(rows, "原因", getReferenceTitle(resource.reason));
+    pushSummaryRow(rows, "結果", getReferenceTitle(resource.outcome));
+    pushCountRow(rows, "併發症", resource.complication);
 }
 
 // Encounter 專用摘要
@@ -3249,14 +3617,19 @@ function buildEncounterSummary(resource, rows) {
         const classDisplay = resource.class.display || resource.class.code || "-";
         rows.push(`<div class="summary-row"><span>就醫分類</span><span>${classDisplay}</span></div>`);
     }
+
+    pushSummaryRow(rows, "病人狀態", getCodeableConceptDisplay(resource.subjectStatus));
+    pushSummaryRow(rows, "服務機構", getReferenceTitle(resource.serviceProvider));
+    pushCountRow(rows, "參與者", resource.participant);
+    pushCountRow(rows, "診斷", resource.diagnosis);
+    pushCountRow(rows, "地點", resource.location);
 }
 
 // 藥物相關摘要
 function buildMedicationSummary(resource, rows) {
     // 藥品名稱
-    if (resource.medicationCodeableConcept) {
-        const medName = resource.medicationCodeableConcept.text || 
-                       getCodingDisplay(resource.medicationCodeableConcept.coding) || "-";
+    const medName = getMedicationDisplay(resource);
+    if (medName) {
         rows.push(`<div class="summary-row"><span>藥品名稱</span><span>${medName}</span></div>`);
     }
     
@@ -3282,6 +3655,15 @@ function buildMedicationSummary(resource, rows) {
         const end = formatDate(resource.effectivePeriod.end);
         rows.push(`<div class="summary-row"><span>用藥期間</span><span>${start} ~ ${end}</span></div>`);
     }
+
+    pushSummaryRow(rows, "Intent", resource.intent);
+    pushSummaryRow(rows, "優先度", resource.priority);
+    pushSummaryRow(rows, "所屬就醫", getReferenceTitle(resource.encounter));
+    pushSummaryRow(rows, "開立者", getReferenceTitle(resource.requester));
+    pushSummaryRow(rows, "用藥原因", getReferenceTitle(resource.reason));
+    pushSummaryRow(rows, "療程型態", getCodeableConceptDisplay(resource.courseOfTherapyType));
+    pushSummaryRow(rows, "補藥次數", resource.dispenseRequest?.numberOfRepeatsAllowed);
+    pushSummaryRow(rows, "每次供應", formatMoney(resource.dispenseRequest?.quantity));
 }
 
 // DiagnosticReport 專用摘要
@@ -3317,6 +3699,13 @@ function buildDiagnosticReportSummary(resource, rows) {
     if (resource.conclusion) {
         rows.push(`<div class="summary-row"><span>結論</span><span>${resource.conclusion}</span></div>`);
     }
+
+    pushSummaryRow(rows, "所屬就醫", getReferenceTitle(resource.encounter));
+    pushSummaryRow(rows, "執行單位", getReferenceTitle(resource.performer));
+    pushSummaryRow(rows, "判讀者", getReferenceTitle(resource.resultsInterpreter));
+    pushCountRow(rows, "檢體", resource.specimen);
+    pushCountRow(rows, "結果項目", resource.result);
+    pushCountRow(rows, "影像/研究", resource.study);
 }
 
 // Immunization 專用摘要
@@ -3408,6 +3797,12 @@ function buildOrganizationSummary(resource, rows) {
             rows.push(`<div class="summary-row"><span>地址</span><span>${addressText}</span></div>`);
         }
     }
+
+    if (resource.active !== undefined) {
+        pushSummaryRow(rows, "啟用狀態", resource.active ? "啟用中" : "停用");
+    }
+    pushSummaryRow(rows, "描述", resource.description);
+    pushSummaryRow(rows, "上層組織", getReferenceTitle(resource.partOf));
 }
 
 function buildPractitionerSummary(resource, rows) {
@@ -3442,6 +3837,49 @@ function buildPractitionerSummary(resource, rows) {
             rows.push(`<div class="summary-row"><span>Email</span><span>${email.value}</span></div>`);
         }
     }
+
+    pushSummaryRow(rows, "生日", resource.birthDate);
+    pushSummaryRow(rows, "主要語言", getCodeableConceptDisplay(resource.communication?.find((item) => item.preferred)?.language) || getCodeableConceptDisplay(resource.communication?.[0]?.language));
+}
+
+function buildClaimSummary(resource, rows) {
+    pushSummaryRow(rows, "類型", getCodeableConceptDisplay(resource.type));
+    pushSummaryRow(rows, "子類型", getCodeableConceptDisplay(resource.subType));
+    pushSummaryRow(rows, "用途", resource.use);
+    pushSummaryRow(rows, "建立日期", formatDate(resource.created));
+    pushSummaryRow(rows, "帳務期間", formatPeriodRange(resource.billablePeriod));
+    pushSummaryRow(rows, "服務提供者", getReferenceTitle(resource.provider));
+    pushSummaryRow(rows, "保險方", getReferenceTitle(resource.insurer));
+    pushSummaryRow(rows, "處理優先度", getCodeableConceptDisplay(resource.priority));
+    pushSummaryRow(rows, "處方/醫令", getReferenceTitle(resource.prescription || resource.originalPrescription || resource.referral));
+    pushCountRow(rows, "相關就醫", resource.encounter);
+    pushCountRow(rows, "診斷", resource.diagnosis);
+    pushCountRow(rows, "處置", resource.procedure);
+    pushCountRow(rows, "保險資訊", resource.insurance);
+    pushSummaryRow(rows, "病人自付", formatMoney(resource.patientPaid));
+    pushSummaryRow(rows, "總額", formatMoney(resource.total));
+    pushCountRow(rows, "申報項目", resource.item);
+}
+
+function buildExplanationOfBenefitSummary(resource, rows) {
+    pushSummaryRow(rows, "類型", getCodeableConceptDisplay(resource.type));
+    pushSummaryRow(rows, "子類型", getCodeableConceptDisplay(resource.subType));
+    pushSummaryRow(rows, "用途", resource.use);
+    pushSummaryRow(rows, "建立日期", formatDate(resource.created));
+    pushSummaryRow(rows, "帳務期間", formatPeriodRange(resource.billablePeriod));
+    pushSummaryRow(rows, "服務提供者", getReferenceTitle(resource.provider));
+    pushSummaryRow(rows, "保險方", getReferenceTitle(resource.insurer));
+    pushSummaryRow(rows, "處理結果", resource.outcome);
+    pushSummaryRow(rows, "審核決定", getCodeableConceptDisplay(resource.decision));
+    pushSummaryRow(rows, "處理說明", resource.disposition);
+    pushSummaryRow(rows, "原始 Claim", getReferenceTitle(resource.claim));
+    pushCountRow(rows, "相關就醫", resource.encounter);
+    pushCountRow(rows, "保險資訊", resource.insurance);
+    pushCountRow(rows, "給付總額", resource.total);
+    pushSummaryRow(rows, "付款日期", formatDate(resource.payment?.date));
+    pushSummaryRow(rows, "付款金額", formatMoney(resource.payment?.amount));
+    pushSummaryRow(rows, "病人自付", formatMoney(resource.patientPaid));
+    pushCountRow(rows, "給付項目", resource.item);
 }
 
 function buildGenericSummary(resource, rows) {
@@ -3471,6 +3909,13 @@ function buildGenericSummary(resource, rows) {
     if (resource.subject && resource.subject.reference) {
         rows.push(`<div class="summary-row"><span>Subject</span><span>${resource.subject.reference}</span></div>`);
     }
+
+    pushSummaryRow(rows, "標題", resource.code?.text || getCodeableConceptDisplay(resource.type));
+    pushSummaryRow(rows, "建立日期", formatDate(resource.created));
+    pushSummaryRow(rows, "期間", formatPeriodRange(resource.period || resource.billablePeriod || resource.actualPeriod));
+    pushSummaryRow(rows, "所屬就醫", getReferenceTitle(resource.encounter));
+    pushSummaryRow(rows, "提供者", getReferenceTitle(resource.provider || resource.performer || resource.requester));
+    pushSummaryRow(rows, "機構", getReferenceTitle(resource.organization || resource.serviceProvider || resource.managingOrganization));
 }
 
 // 日期格式化輔助函數
@@ -3668,10 +4113,10 @@ function renderGroupModal() {
             activeRelatedContext.selectedNodeId = filteredResources[0] ? `${filteredResources[0].resourceType}/${filteredResources[0].id}` : null;
         }
 
-        const groupedResources = sourceResource?.resourceType === "Encounter"
+        const groupedResources = sourceResource
             ? buildEncounterRelatedGroups(sourceResource, filteredResources)
             : [];
-        const listMarkup = sourceResource?.resourceType === "Encounter"
+        const listMarkup = sourceResource
             ? buildEncounterRelatedListView(groupedResources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null)
             : buildRelatedTableView(filteredResources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null);
 
