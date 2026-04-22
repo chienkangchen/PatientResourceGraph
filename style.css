@@ -511,17 +511,36 @@ body.modal-open {
     opacity: 0.9;
 }
 
-.header-actions .primary-btn {
-    background: #fff;
-    color: #1d4ed8;
+.primary-btn {
+    background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
+    color: #ffffff;
     border: none;
     padding: 10px 16px;
     border-radius: 10px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+    font-family: inherit;
+}
+
+.primary-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 28px rgba(37, 99, 235, 0.28);
+}
+
+.primary-btn:active {
+    transform: translateY(0);
+}
+
+.header-actions .primary-btn {
+    background: #fff;
+    color: #1d4ed8;
+    box-shadow: none;
 }
 
 .header-actions .secondary-btn {
@@ -1255,9 +1274,14 @@ body.modal-open {
     gap: 10px;
 }
 
+.detail-action-bar .primary-btn {
+    width: 100%;
+}
+
 .detail-action-bar .primary-btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+    box-shadow: none;
 }
 
 .summary-row {

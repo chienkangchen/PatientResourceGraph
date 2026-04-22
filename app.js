@@ -2037,7 +2037,7 @@ function buildRelatedTableView(resources, selectedNodeId) {
             <tr class="group-table-row related-table-row ${isActive}" data-resource-id="${nodeId}" tabindex="0">
                 <td>${escapeHtml(getDisplayDate(resource) || "-")}</td>
                 <td>${escapeHtml(getResourceCardTitle(resource))}</td>
-                <td>${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)}</td>
+                <td>${escapeHtml(resource.resourceType || "-")}</td>
                 <td>${escapeHtml(getResourceStatus(resource) || "-")}</td>
                 <td>${escapeHtml(resource.id || "-")}</td>
             </tr>
@@ -2051,41 +2051,13 @@ function buildRelatedTableView(resources, selectedNodeId) {
                     <tr>
                         <th>日期</th>
                         <th>標題</th>
-                        <th>類型</th>
+                        <th>ResourceType</th>
                         <th>狀態</th>
                         <th>ID</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>
-        </div>
-    `;
-}
-
-function buildRelatedTimelineView(resources, selectedNodeId) {
-    if (!resources.length) {
-        return '<div class="timeline-empty">找不到相關 Resource</div>';
-    }
-
-    const items = resources.map((resource) => {
-        const nodeId = `${resource.resourceType}/${resource.id}`;
-        const color = TYPE_COLORS[resource.resourceType] || TYPE_COLORS.Unknown;
-        const isActive = nodeId === selectedNodeId ? "active" : "";
-        return `
-            <button type="button" class="timeline-item modal-timeline-item ${isActive}" data-resource-id="${nodeId}">
-                <span class="timeline-dot" style="background:${color}; box-shadow: 0 0 0 6px ${color}22;"></span>
-                <span class="timeline-content">
-                    <span class="timeline-date">${escapeHtml(getDisplayDate(resource) || "無日期")}</span>
-                    <span class="timeline-label">${escapeHtml(getResourceCardTitle(resource))}</span>
-                    <span class="timeline-type">${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)}${getResourceStatus(resource) ? ` · ${escapeHtml(getResourceStatus(resource))}` : ""}</span>
-                </span>
-            </button>
-        `;
-    }).join("");
-
-    return `
-        <div class="timeline-container modal-timeline-container">
-            <div class="timeline">${items}</div>
         </div>
     `;
 }
@@ -2102,7 +2074,7 @@ function buildRelatedResourceDetail(resource) {
                 <span class="resource-detail-kicker">單筆明細</span>
                 <h3>${escapeHtml(getResourceCardTitle(resource))}</h3>
                 <div class="resource-detail-meta">
-                    <span class="story-type-chip">${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)}</span>
+                    <span class="story-type-chip">${escapeHtml(resource.resourceType || "-")}</span>
                     ${getResourceStatus(resource) ? `<span class="story-type-chip">${escapeHtml(getResourceStatus(resource))}</span>` : ""}
                 </div>
             </div>
@@ -2130,7 +2102,7 @@ async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = 
     const resources = getConnectedResources(currentNodeId, connectedNodeIds);
 
     activeModalMode = "related";
-    activeGroupModalView = view;
+    activeGroupModalView = "table";
     activeRelatedContext = {
         sourceNodeId: currentNodeId,
         resources,
@@ -3553,32 +3525,19 @@ function renderGroupModal() {
             : null;
 
         groupModalTitle.textContent = sourceResource
-            ? `${getResourceCardTitle(sourceResource)} 的相關 Resource`
+            ? `與該 ${sourceResource.resourceType} 相關的 Resource`
             : "相關 Resource";
         groupModalMeta.textContent = `${resources.length} 項相關資料`;
         groupModalBody.innerHTML = `
-            <div class="group-modal-toolbar">
-                <button type="button" class="group-view-toggle ${activeGroupModalView === "table" ? "active" : ""}" data-view="table">表格</button>
-                <button type="button" class="group-view-toggle ${activeGroupModalView === "timeline" ? "active" : ""}" data-view="timeline">時間軸</button>
-            </div>
             <div class="related-modal-layout">
                 <div class="related-modal-list">
-                    ${activeGroupModalView === "timeline"
-                        ? buildRelatedTimelineView(resources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null)
-                        : buildRelatedTableView(resources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null)}
+                    ${buildRelatedTableView(resources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null)}
                 </div>
                 <div class="related-modal-detail">
                     ${buildRelatedResourceDetail(selectedResource)}
                 </div>
             </div>
         `;
-
-        groupModalBody.querySelectorAll(".group-view-toggle").forEach((button) => {
-            button.addEventListener("click", () => {
-                activeGroupModalView = button.dataset.view || "table";
-                renderGroupModal();
-            });
-        });
 
         groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
             element.addEventListener("click", () => {
