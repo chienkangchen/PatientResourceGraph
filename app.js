@@ -1129,7 +1129,7 @@ function buildGraph() {
 
     const options = {
         layout: {
-            improvedLayout: false
+            improvedLayout: true
         },
         physics: {
             enabled: true,
@@ -1145,7 +1145,7 @@ function buildGraph() {
                 springLength: 180,
                 springConstant: 0.04,
                 damping: 0.5,
-                avoidOverlap: 0.8
+                avoidOverlap: 1
             },
             maxVelocity: 50,
             minVelocity: 0.75,
@@ -1440,7 +1440,7 @@ function getGroupResources(groupId) {
 
 function addNode(nodeId, resource, group, displayText, distance = 1) {
     if (nodeMeta.has(nodeId)) {
-        return;
+        return false;
     }
 
     // 使用中文標籤作為節點的第一行
@@ -1461,6 +1461,8 @@ function addNode(nodeId, resource, group, displayText, distance = 1) {
     if (resource && resource.resourceType) {
         resourceMap.set(nodeId, resource);
     }
+
+    return true;
 }
 
 function addEdge(from, to, label) {
@@ -1484,13 +1486,14 @@ function expandNode(nodeId) {
     }
     
     expandedNodes.add(nodeId);
+    const addedNodeIds = [];
     
     // 從 resourceMap 中查找該節點的資源
     const resource = resourceMap.get(nodeId);
     
     if (resource) {
         // 1. 收集並添加該資源引用的資源（正向引用）
-        collectAndAddReferences(nodeId, resource);
+        collectAndAddReferences(nodeId, resource, addedNodeIds);
     }
     
     // 2. 查找所有引用該節點的資源（反向引用）
@@ -1498,9 +1501,13 @@ function expandNode(nodeId) {
     referencingResources.forEach(([srcNodeId, srcResource]) => {
         if (!expandedNodes.has(srcNodeId)) {
             expandedNodes.add(srcNodeId);
-            collectAndAddReferences(srcNodeId, srcResource);
+            collectAndAddReferences(srcNodeId, srcResource, addedNodeIds);
         }
     });
+
+    if (addedNodeIds.length) {
+        positionNewNodesAround(nodeId, addedNodeIds);
+    }
     
     // 根據節點數量決定是否使用物理模擬
     const nodeCount = nodes.length;
@@ -1514,7 +1521,7 @@ function expandNode(nodeId) {
         // 節點較少時臨時啟用物理引擎進行短暫穩定化
         if (network) {
             network.setOptions({ physics: true });
-            network.stabilize({ iterations: 15 });
+            network.stabilize({ iterations: 60 });
             
             // 穩定化完成後再次停用物理引擎
             setTimeout(() => {
@@ -1523,6 +1530,26 @@ function expandNode(nodeId) {
         }
     }
     return true;
+}
+
+function positionNewNodesAround(centerNodeId, addedNodeIds) {
+    if (!network || !addedNodeIds.length) {
+        return;
+    }
+
+    const centerPosition = network.getPosition(centerNodeId);
+    const baseX = Number.isFinite(centerPosition?.x) ? centerPosition.x : 0;
+    const baseY = Number.isFinite(centerPosition?.y) ? centerPosition.y : 0;
+    const radius = Math.max(170, 42 * Math.sqrt(addedNodeIds.length));
+
+    addedNodeIds.forEach((addedNodeId, index) => {
+        const angle = (Math.PI * 2 * index) / addedNodeIds.length;
+        nodes.update({
+            id: addedNodeId,
+            x: baseX + Math.cos(angle) * radius,
+            y: baseY + Math.sin(angle) * radius
+        });
+    });
 }
 
 function findReferencingResources(targetNodeId) {
@@ -1570,7 +1597,7 @@ function resourceReferences(resource, targetNodeId) {
     return references.has(targetNodeId);
 }
 
-function collectAndAddReferences(sourceNodeId, resource) {
+function collectAndAddReferences(sourceNodeId, resource, addedNodeIds = []) {
     const references = new Set();
 
     const walk = (value) => {
@@ -1598,7 +1625,10 @@ function collectAndAddReferences(sourceNodeId, resource) {
         }
         const [type, id] = normalized.split("/");
         const label = id ? id : normalized;
-        addNode(normalized, null, type || "Unknown", label, 2);
+        const wasAdded = addNode(normalized, null, type || "Unknown", label, 2);
+        if (wasAdded) {
+            addedNodeIds.push(normalized);
+        }
         addEdge(sourceNodeId, normalized, "subject");
     });
 }
