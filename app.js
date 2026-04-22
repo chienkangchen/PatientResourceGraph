@@ -1991,10 +1991,39 @@ function buildResourceStory(resource, connectedResources) {
     `;
 }
 
+function ensureResourceNodeInGraph(targetNodeId) {
+    if (!targetNodeId || !nodes || nodes.get(targetNodeId)) {
+        return Boolean(targetNodeId);
+    }
+
+    const resource = resourceMap.get(targetNodeId);
+    if (!resource || !resource.resourceType) {
+        return false;
+    }
+
+    addNode(targetNodeId, resource, resource.resourceType, getResourceDisplay(resource), 1);
+    expandNode(targetNodeId);
+
+    let hasConnections = false;
+    edges.forEach((edge) => {
+        if (edge.from === targetNodeId || edge.to === targetNodeId) {
+            hasConnections = true;
+        }
+    });
+
+    if (!hasConnections && patientResource?.id) {
+        addEdge(`Patient/${patientResource.id}`, targetNodeId, "");
+    }
+
+    return true;
+}
+
 function openResourceStory(targetNodeId) {
     if (!targetNodeId) {
         return;
     }
+
+    ensureResourceNodeInGraph(targetNodeId);
 
     if (network && nodes && nodes.get(targetNodeId)) {
         network.selectNodes([targetNodeId]);
