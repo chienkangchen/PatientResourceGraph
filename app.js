@@ -1254,6 +1254,8 @@ function selectNodeById(nodeId) {
         }
     });
 
+    positionConnectedNodesForSelection(nodeId, connectedNodeIds);
+
     updateFiltersForNode(nodeId, connectedNodeIds);
 
     renderDetail(nodeId, connectedNodeIds).catch((err) => {
@@ -1550,6 +1552,54 @@ function positionNewNodesAround(centerNodeId, addedNodeIds) {
             y: baseY + Math.sin(angle) * radius
         });
     });
+}
+
+function positionConnectedNodesForSelection(centerNodeId, connectedNodeIds) {
+    if (!network || !connectedNodeIds || connectedNodeIds.size <= 2) {
+        return;
+    }
+
+    const centerPosition = network.getPosition(centerNodeId);
+    const baseX = Number.isFinite(centerPosition?.x) ? centerPosition.x : 0;
+    const baseY = Number.isFinite(centerPosition?.y) ? centerPosition.y : 0;
+    const otherNodeIds = Array.from(connectedNodeIds).filter((id) => id !== centerNodeId);
+    const patientNodeIds = otherNodeIds.filter((id) => id.startsWith("Patient/"));
+    const nonPatientNodeIds = otherNodeIds.filter((id) => !id.startsWith("Patient/"));
+
+    patientNodeIds.forEach((patientNodeId, index) => {
+        const patientOffsetY = patientNodeIds.length > 1 ? (index - (patientNodeIds.length - 1) / 2) * 90 : 0;
+        nodes.update({
+            id: patientNodeId,
+            x: baseX - 220,
+            y: baseY + patientOffsetY
+        });
+    });
+
+    const firstRingCapacity = 5;
+    const arcStart = -Math.PI / 3;
+    const arcEnd = Math.PI / 3;
+
+    nonPatientNodeIds.forEach((relatedNodeId, index) => {
+        const ringIndex = Math.floor(index / firstRingCapacity);
+        const ringOffset = index % firstRingCapacity;
+        const nodesInRing = Math.min(firstRingCapacity, nonPatientNodeIds.length - ringIndex * firstRingCapacity);
+        const radius = 190 + ringIndex * 110;
+        const angle = nodesInRing === 1
+            ? 0
+            : arcStart + ((arcEnd - arcStart) * ringOffset) / (nodesInRing - 1);
+
+        nodes.update({
+            id: relatedNodeId,
+            x: baseX + Math.cos(angle) * radius,
+            y: baseY + Math.sin(angle) * radius
+        });
+    });
+
+    network.setOptions({ physics: true });
+    network.stabilize({ iterations: 45 });
+    setTimeout(() => {
+        network.setOptions({ physics: false });
+    }, 250);
 }
 
 function findReferencingResources(targetNodeId) {
