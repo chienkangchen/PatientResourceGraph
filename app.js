@@ -650,8 +650,12 @@ async function loadResourcesIndividually(patientId) {
 
 function resetUI() {
     errorBanner.style.display = "none";
-    patientCard.innerHTML = "<div class=\"loading\">載入病人資料中...</div>";
-    statsCard.innerHTML = "<div class=\"loading\">統計載入中...</div>";
+    if (patientCard) {
+        patientCard.innerHTML = "<div class=\"loading\">載入病人資料中...</div>";
+    }
+    if (statsCard) {
+        statsCard.innerHTML = "<div class=\"loading\">統計載入中...</div>";
+    }
     filterList.innerHTML = "";
     detailCard.innerHTML = `
         <div class="empty-state">
@@ -751,6 +755,10 @@ function mergeResources(current, incoming) {
 }
 
 function renderPatientCard(patient) {
+    if (!patientCard) {
+        return;
+    }
+
     if (!patient || !patient.id) {
         patientCard.innerHTML = "<div class=\"empty-state\">找不到病人資料</div>";
         return;
@@ -791,6 +799,10 @@ function renderPatientCard(patient) {
 }
 
 function renderStats() {
+    if (!statsCard) {
+        return;
+    }
+
     const totalResources = RESOURCE_TYPES.reduce((sum, type) => sum + (resourcesByType[type] || []).length, 0);
 
     const groupSummaryHtml = Object.entries(RESOURCE_GROUPS).map(([groupId, group]) => {
