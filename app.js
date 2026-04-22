@@ -1265,7 +1265,7 @@ function selectNodeById(nodeId) {
 function deselectAllNodes() {
     selectedNodeId = null;
 
-    updateVisibility();
+    restoreFullFilters();
 
     detailCard.innerHTML = `
         <div class="empty-state">
@@ -2064,6 +2064,15 @@ function updateVisibility() {
             nodes.update({ id: node.id, hidden: false });
             return;
         }
+
+        if (!selectedNodeId) {
+            const isGroupNode = meta && meta.kind === "group";
+            if (!isGroupNode) {
+                nodes.update({ id: node.id, hidden: true });
+                return;
+            }
+        }
+
         const group = meta && meta.group ? meta.group : "Unknown";
         const shouldShow = selectedGroups.has(group);
         nodes.update({ id: node.id, hidden: !shouldShow });
