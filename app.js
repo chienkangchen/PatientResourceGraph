@@ -372,6 +372,63 @@ const RELATED_RESOURCE_PRIORITY = {
     }
 };
 
+const ARCHETYPE_STORY_BLUEPRINTS = {
+    problem: {
+        whyTypes: ["Condition", "DetectedIssue", "AllergyIntolerance", "Observation", "DiagnosticReport", "ClinicalImpression"],
+        contextTypes: ["Encounter", "Practitioner", "Organization", "EpisodeOfCare"],
+        beforeTypes: ["Observation", "DiagnosticReport", "ClinicalImpression", "ServiceRequest"],
+        afterTypes: ["MedicationRequest", "Procedure", "CarePlan", "Task"],
+        impactTypes: ["MedicationRequest", "Procedure", "CarePlan", "Task"]
+    },
+    event: {
+        whyTypes: ["Condition", "ServiceRequest", "CarePlan", "Observation", "DiagnosticReport"],
+        contextTypes: ["Encounter", "Practitioner", "Organization", "EpisodeOfCare"],
+        beforeTypes: ["Condition", "Observation", "DiagnosticReport", "ServiceRequest"],
+        afterTypes: ["Observation", "DiagnosticReport", "MedicationRequest", "CarePlan", "Task", "Appointment"],
+        impactTypes: ["Observation", "DiagnosticReport", "MedicationRequest", "CarePlan", "Task", "Appointment"]
+    },
+    result: {
+        whyTypes: ["Condition", "ServiceRequest", "Encounter", "DiagnosticReport"],
+        contextTypes: ["Encounter", "Practitioner", "Organization", "EpisodeOfCare"],
+        beforeTypes: ["Condition", "ServiceRequest", "Observation"],
+        afterTypes: ["MedicationRequest", "Procedure", "CarePlan", "DiagnosticReport"],
+        impactTypes: ["Condition", "MedicationRequest", "Procedure", "CarePlan"]
+    },
+    action: {
+        whyTypes: ["Condition", "Observation", "DiagnosticReport", "Encounter"],
+        contextTypes: ["Encounter", "Practitioner", "Organization", "EpisodeOfCare"],
+        beforeTypes: ["Condition", "Observation", "DiagnosticReport", "ServiceRequest"],
+        afterTypes: ["MedicationAdministration", "MedicationDispense", "Observation", "Task", "CarePlan", "Appointment"],
+        impactTypes: ["Observation", "Task", "CarePlan", "MedicationAdministration", "MedicationDispense"]
+    },
+    financial: {
+        whyTypes: ["Encounter", "Procedure", "MedicationRequest", "Coverage"],
+        contextTypes: ["Encounter", "Organization", "EpisodeOfCare"],
+        beforeTypes: ["Procedure", "Encounter", "MedicationRequest", "Claim"],
+        afterTypes: ["ClaimResponse", "ExplanationOfBenefit", "PaymentNotice", "PaymentReconciliation"],
+        impactTypes: ["ClaimResponse", "ExplanationOfBenefit", "CoverageEligibilityResponse"]
+    },
+    unknown: {
+        whyTypes: ["Condition", "Encounter", "Observation", "ServiceRequest"],
+        contextTypes: ["Encounter", "Practitioner", "Organization"],
+        beforeTypes: ["Condition", "Observation", "DiagnosticReport"],
+        afterTypes: ["Observation", "DiagnosticReport", "Task", "CarePlan"],
+        impactTypes: ["Observation", "DiagnosticReport", "Task", "CarePlan"]
+    }
+};
+
+const STORY_PANEL_COPY = {
+    subtitle: "從原因、情境到後續影響，閱讀這筆資料在照護流程中的位置",
+    whyTitle: "為什麼出現",
+    whyDescription: "先看這筆資料背後的臨床動機、依據或照護意圖。",
+    contextTitle: "它屬於哪個照護情境",
+    contextDescription: "了解它發生在哪次就醫、由誰處理、屬於哪段照護流程。",
+    timelineTitle: "前後發生了什麼",
+    timelineDescription: "把這筆資料放回前後事件脈絡，而不是只看單一欄位。",
+    impactTitle: "它帶來哪些後續影響",
+    impactDescription: "觀察這筆資料之後推動了哪些後續行動、結果或照護安排。"
+};
+
 let client = null;
 let patientResource = null;
 let resourcesByType = {};
@@ -660,7 +717,7 @@ function resetUI() {
     detailCard.innerHTML = `
         <div class="empty-state">
             <i class="fas fa-hand-pointer"></i>
-            點選節點查看詳細資訊
+            點選節點閱讀事件故事
         </div>
     `;
     closeGroupModal();
@@ -1213,7 +1270,7 @@ function deselectAllNodes() {
     detailCard.innerHTML = `
         <div class="empty-state">
             <i class="fas fa-hand-pointer"></i>
-            點選資源群組以開啟表格或時間軸檢視
+            點選節點閱讀事件故事
         </div>
     `;
 
@@ -1587,6 +1644,378 @@ function getCodingDisplay(coding) {
     return coding[0].display || coding[0].code || "";
 }
 
+function getResourceArchetype(resourceType) {
+    return RESOURCE_ARCHETYPES[resourceType] || "unknown";
+}
+
+function getStoryBlueprint(resourceType) {
+    const archetype = getResourceArchetype(resourceType);
+    return ARCHETYPE_STORY_BLUEPRINTS[archetype] || ARCHETYPE_STORY_BLUEPRINTS.unknown;
+}
+
+function mergeResourceLists(...lists) {
+    const map = new Map();
+
+    lists.flat().forEach((resource) => {
+        if (!resource || !resource.id || !resource.resourceType) {
+            return;
+        }
+        map.set(`${resource.resourceType}/${resource.id}`, resource);
+    });
+
+    return Array.from(map.values());
+}
+
+function getReferenceDisplayValue(value) {
+    if (!value) {
+        return "";
+    }
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const display = getReferenceDisplayValue(item);
+            if (display) {
+                return display;
+            }
+        }
+        return "";
+    }
+    if (typeof value === "string") {
+        return value;
+    }
+    if (value.text) {
+        return value.text;
+    }
+    if (value.display) {
+        return value.display;
+    }
+    if (value.reference) {
+        return value.reference;
+    }
+    if (value.code) {
+        return value.code;
+    }
+    if (value.coding && value.coding.length) {
+        return getCodingDisplay(value.coding);
+    }
+    if (value.value) {
+        return String(value.value);
+    }
+    return "";
+}
+
+function collectStoryFacts(resource) {
+    const facts = [];
+    const pushFact = (label, value) => {
+        if (!value || value === "-" || value === "無日期") {
+            return;
+        }
+        facts.push({ label, value });
+    };
+
+    pushFact("資源類型", RESOURCE_LABELS[resource.resourceType] || resource.resourceType);
+    pushFact("狀態", getResourceStatus(resource));
+    pushFact("主要時間", getDisplayDate(resource));
+
+    switch (resource.resourceType) {
+        case "Patient":
+            pushFact("姓名", formatHumanName(resource.name?.[0]));
+            pushFact("性別", resource.gender);
+            pushFact("生日", resource.birthDate);
+            break;
+        case "Condition":
+            pushFact("核心主題", resource.code?.text || getCodingDisplay(resource.code?.coding));
+            pushFact("發病日期", formatDate(resource.onsetDateTime || resource.onsetPeriod?.start));
+            break;
+        case "Observation":
+            pushFact("核心主題", resource.code?.text || getCodingDisplay(resource.code?.coding));
+            pushFact("結果", resource.valueQuantity ? `${resource.valueQuantity.value || ""} ${resource.valueQuantity.unit || ""}`.trim() : resource.valueString || resource.valueCodeableConcept?.text || getCodingDisplay(resource.valueCodeableConcept?.coding));
+            break;
+        case "Procedure":
+            pushFact("核心主題", resource.code?.text || getCodingDisplay(resource.code?.coding));
+            pushFact("所屬就醫", getReferenceDisplayValue(resource.encounter));
+            pushFact("類別", resource.category?.text || getCodingDisplay(resource.category?.coding));
+            break;
+        case "Encounter":
+            pushFact("核心主題", resource.type?.[0]?.text || getCodingDisplay(resource.type?.[0]?.coding));
+            pushFact("就醫分類", resource.class?.display || resource.class?.code);
+            break;
+        case "MedicationRequest":
+        case "MedicationStatement":
+            pushFact("核心主題", resource.medicationCodeableConcept?.text || getCodingDisplay(resource.medicationCodeableConcept?.coding));
+            pushFact("劑量", resource.dosage?.[0]?.text);
+            break;
+        case "DiagnosticReport":
+            pushFact("核心主題", resource.code?.text || getCodingDisplay(resource.code?.coding));
+            pushFact("結論", resource.conclusion);
+            break;
+        default:
+            pushFact("核心主題", getResourceCardTitle(resource));
+            break;
+    }
+
+    pushFact("識別碼", resource.id);
+    return facts.slice(0, 6);
+}
+
+function buildStoryLead(resource) {
+    if (resource.resourceType === "Patient") {
+        return `${formatHumanName(resource.name?.[0])} 是目前故事閱讀的核心病人，後續所有 Resource 都會圍繞此病人的照護旅程展開。`;
+    }
+
+    const title = getResourceCardTitle(resource);
+    const archetypeLabel = ARCHETYPE_LABELS[getResourceArchetype(resource.resourceType)] || "醫療";
+    const date = getDisplayDate(resource);
+    const status = getResourceStatus(resource);
+    const encounter = getReferenceDisplayValue(resource.encounter);
+    const reason = getReferenceDisplayValue(resource.reasonReference) || getReferenceDisplayValue(resource.reasonCode) || getReferenceDisplayValue(resource.basedOn) || getReferenceDisplayValue(resource.focus);
+
+    let sentence = `${title} 是一筆${archetypeLabel}資料`;
+    if (date) {
+        sentence += `，時間為 ${date}`;
+    }
+    if (status) {
+        sentence += `，目前狀態為 ${status}`;
+    }
+    if (encounter) {
+        sentence += `，並與 ${encounter} 的照護情境相關`;
+    } else if (reason) {
+        sentence += `，與 ${reason} 有直接關聯`;
+    }
+    return `${sentence}。`;
+}
+
+function buildStoryHero(resource) {
+    const facts = collectStoryFacts(resource).map(({ label, value }) => `
+        <div class="story-fact-card">
+            <span class="story-fact-label">${escapeHtml(label)}</span>
+            <strong class="story-fact-value">${escapeHtml(value)}</strong>
+        </div>
+    `).join("");
+
+    const archetype = getResourceArchetype(resource.resourceType);
+    const label = RESOURCE_LABELS[resource.resourceType] || resource.resourceType;
+
+    return `
+        <div class="story-hero">
+            <div class="story-heading">
+                <span class="story-kicker">事件故事</span>
+                <h3>${escapeHtml(getResourceCardTitle(resource))}</h3>
+                <p class="story-subtitle">${STORY_PANEL_COPY.subtitle}</p>
+            </div>
+            <div class="story-hero-meta">
+                <span class="story-type-chip">${escapeHtml(label)}</span>
+                <span class="archetype-badge archetype-${archetype}">${ARCHETYPE_LABELS[archetype] || "未分類"}</span>
+            </div>
+            <div class="story-overview-card">
+                <h4>這是什麼</h4>
+                <p class="story-lead">${escapeHtml(buildStoryLead(resource))}</p>
+                <div class="story-fact-grid">
+                    ${facts}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function buildStoryResourceItems(resources, emptyText) {
+    if (!resources.length) {
+        return `<div class="story-empty">${emptyText}</div>`;
+    }
+
+    const items = resources.slice(0, 6).map((resource) => {
+        const nodeId = `${resource.resourceType}/${resource.id}`;
+        const color = TYPE_COLORS[resource.resourceType] || TYPE_COLORS.Unknown;
+        const status = getResourceStatus(resource);
+        const date = getDisplayDate(resource) || "無日期";
+        return `
+            <button type="button" class="story-resource-item" data-node-id="${escapeHtml(nodeId)}">
+                <span class="story-resource-dot" style="background:${color};"></span>
+                <span class="story-resource-body">
+                    <span class="story-resource-title">${escapeHtml(getResourceCardTitle(resource))}</span>
+                    <span class="story-resource-meta">${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)} · ${escapeHtml(date)}${status ? ` · ${escapeHtml(status)}` : ""}</span>
+                </span>
+            </button>
+        `;
+    }).join("");
+
+    return `
+        <div class="story-item-list">
+            ${items}
+        </div>
+        ${resources.length > 6 ? `<div class="story-more">還有 ${resources.length - 6} 項相關資料</div>` : ""}
+    `;
+}
+
+function buildStorySection(title, description, resources, emptyText) {
+    return `
+        <section class="story-section-card">
+            <div class="story-section-head">
+                <h4>${title}</h4>
+                <p>${description}</p>
+            </div>
+            ${buildStoryResourceItems(resources, emptyText)}
+        </section>
+    `;
+}
+
+function buildStoryTimelineSection(resource, connectedResources, blueprint) {
+    const currentDate = getResourceDate(resource);
+    const beforeCandidates = connectedResources.filter((item) => blueprint.beforeTypes.includes(item.resourceType));
+    const afterCandidates = connectedResources.filter((item) => blueprint.afterTypes.includes(item.resourceType));
+
+    let before = [];
+    let after = [];
+
+    if (currentDate) {
+        const currentTime = new Date(currentDate).getTime();
+        before = beforeCandidates.filter((item) => {
+            const date = getResourceDate(item);
+            return date && new Date(date).getTime() <= currentTime;
+        });
+        after = afterCandidates.filter((item) => {
+            const date = getResourceDate(item);
+            return date && new Date(date).getTime() >= currentTime;
+        });
+    }
+
+    if (!before.length) {
+        before = beforeCandidates;
+    }
+    if (!after.length) {
+        after = afterCandidates;
+    }
+
+    return `
+        <section class="story-section-card">
+            <div class="story-section-head">
+                <h4>${STORY_PANEL_COPY.timelineTitle}</h4>
+                <p>${STORY_PANEL_COPY.timelineDescription}</p>
+            </div>
+            <div class="story-timeline-grid">
+                <div class="story-subsection">
+                    <h5>事件之前</h5>
+                    <p>在這筆資料出現前，可能已有檢查、判斷或醫令作為依據。</p>
+                    ${buildStoryResourceItems(sortResourcesByDate(before), "目前沒有足夠資料串起事件之前的依據")}
+                </div>
+                <div class="story-subsection">
+                    <h5>事件之後</h5>
+                    <p>這筆資料之後，可能推動新的觀察、報告、用藥或照護安排。</p>
+                    ${buildStoryResourceItems(sortResourcesByDate(after), "目前沒有足夠資料串起事件之後的影響")}
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+function getConnectedResources(currentNodeId, connectedNodeIds) {
+    if (!connectedNodeIds) {
+        return [];
+    }
+
+    const resources = [];
+    connectedNodeIds.forEach((nodeId) => {
+        if (nodeId === currentNodeId) {
+            return;
+        }
+        const resource = resourceMap.get(nodeId);
+        if (resource && resource.id && resource.resourceType) {
+            resources.push(resource);
+        }
+    });
+
+    return sortResourcesByDate(mergeResourceLists(resources));
+}
+
+async function hydrateConnectedResources(connectedNodeIds) {
+    if (!client || !connectedNodeIds) {
+        return;
+    }
+
+    const missingResources = [];
+    connectedNodeIds.forEach((nodeId) => {
+        if (resourceMap.get(nodeId)) {
+            return;
+        }
+        const [resType, resId] = nodeId.split("/");
+        if (resType && resId) {
+            missingResources.push({ nodeId, resType, resId });
+        }
+    });
+
+    if (!missingResources.length) {
+        return;
+    }
+
+    await Promise.allSettled(
+        missingResources.map(async ({ nodeId, resType, resId }) => {
+            try {
+                const loadedResource = await requestAll(`${resType}/${resId}`);
+                const resource = Array.isArray(loadedResource) ? loadedResource[0] : loadedResource;
+                if (resource && resource.resourceType) {
+                    resourceMap.set(nodeId, resource);
+                }
+            } catch (error) {
+                console.warn(`無法補載故事資源 ${nodeId}:`, error.message);
+            }
+        })
+    );
+}
+
+function buildResourceStory(resource, connectedResources) {
+    const blueprint = getStoryBlueprint(resource.resourceType);
+    const storyWhyTypes = RELATED_RESOURCE_PRIORITY[resource.resourceType]?.priorities?.map((item) => item.type) || blueprint.whyTypes;
+
+    const whyResources = sortResourcesByDate(mergeResourceLists(
+        connectedResources.filter((item) => storyWhyTypes.includes(item.resourceType)),
+        ...storyWhyTypes.map((type) => findRelatedByType(resource, type))
+    ));
+
+    const contextResources = sortResourcesByDate(mergeResourceLists(
+        connectedResources.filter((item) => blueprint.contextTypes.includes(item.resourceType)),
+        ...blueprint.contextTypes.map((type) => findRelatedByType(resource, type))
+    ));
+
+    const impactResources = sortResourcesByDate(mergeResourceLists(
+        connectedResources.filter((item) => blueprint.impactTypes.includes(item.resourceType)),
+        ...blueprint.impactTypes.map((type) => findRelatedByType(resource, type))
+    ));
+
+    return `
+        <div class="story-panel">
+            ${buildStoryHero(resource)}
+            ${buildStorySection(STORY_PANEL_COPY.whyTitle, STORY_PANEL_COPY.whyDescription, whyResources, "目前找不到這筆資料的明確臨床動機或依據")}
+            ${buildStorySection(STORY_PANEL_COPY.contextTitle, STORY_PANEL_COPY.contextDescription, contextResources, "目前找不到完整的照護情境資訊")}
+            ${buildStoryTimelineSection(resource, connectedResources, blueprint)}
+            ${buildStorySection(STORY_PANEL_COPY.impactTitle, STORY_PANEL_COPY.impactDescription, impactResources, "目前沒有找到明確的後續影響")}
+        </div>
+    `;
+}
+
+function openResourceStory(targetNodeId) {
+    if (!targetNodeId) {
+        return;
+    }
+
+    if (network && nodes && nodes.get(targetNodeId)) {
+        network.selectNodes([targetNodeId]);
+        network.focus(targetNodeId, { scale: 1.2, animation: true });
+        selectNodeById(targetNodeId);
+        return;
+    }
+
+    const connectedNodeIds = new Set([targetNodeId]);
+    if (edges) {
+        edges.forEach((edge) => {
+            if (edge.from === targetNodeId) connectedNodeIds.add(edge.to);
+            if (edge.to === targetNodeId) connectedNodeIds.add(edge.from);
+        });
+    }
+
+    renderDetail(targetNodeId, connectedNodeIds).catch((err) => {
+        console.error("renderDetail 失敗:", err);
+    });
+}
+
 function updateVisibility() {
     // 安全检查：确保必要的 DOM 和数据结构存在
     if (!filterList || !nodes || !edges) {
@@ -1754,7 +2183,7 @@ async function renderDetail(nodeId, connectedNodeIds) {
             <h3>${chineseLabel}</h3>
             <div class="json-collapsible">
                 <div class="json-header" tabindex="0" role="button" aria-expanded="false" aria-controls="json-content-patient">
-                    <span>JSON 詳情</span>
+                    <span>原始資料</span>
                     <span class="collapse-icon">▼</span>
                 </div>
                 <div id="json-content-patient" class="json-content collapsed">
@@ -1862,27 +2291,22 @@ async function renderDetail(nodeId, connectedNodeIds) {
         }
     }
 
-    const chineseLabel = RESOURCE_LABELS[resource.resourceType] || resource.resourceType;
-    const title = `${chineseLabel}`;
-    const summary = buildResourceSummary(resource);
-    
-    // 方案一：語意脈絡區塊（優先顯示）
-    const semanticHtml = buildSemanticContext(resource);
+    await hydrateConnectedResources(connectedNodeIds);
+    const connectedResources = getConnectedResources(nodeId, connectedNodeIds);
+    const storyHtml = buildResourceStory(resource, connectedResources);
 
     // 構建關聯資源列表（分組顯示）
     let relatedHtml = "";
     if (connectedNodeIds && connectedNodeIds.size > 1) {
-        relatedHtml = await buildGroupedRelatedResources(nodeId, connectedNodeIds);
+        relatedHtml = await buildGroupedRelatedResources(nodeId, connectedNodeIds, "其他相關資源");
     }
 
     detailCard.innerHTML = `
-        <h3>${title}</h3>
-        <div class="detail-summary">${summary}</div>
-        ${semanticHtml}
+        ${storyHtml}
         ${relatedHtml}
         <div class="json-collapsible">
             <div class="json-header" tabindex="0" role="button" aria-expanded="false" aria-controls="json-content-resource">
-                <span>JSON 詳情</span>
+                <span>原始資料</span>
                 <span class="collapse-icon">▼</span>
             </div>
             <div id="json-content-resource" class="json-content collapsed">
@@ -1921,47 +2345,7 @@ async function renderDetail(nodeId, connectedNodeIds) {
             }
             
             const targetNodeId = card.getAttribute('data-node-id');
-            if (targetNodeId && network) {
-                // 移除所有 active 狀態
-                detailCard.querySelectorAll('.resource-card').forEach(el => el.classList.remove('active'));
-                // 添加當前項目的 active 狀態
-                card.classList.add('active');
-                
-                // 直接聚焦到節點，但不觸發選中效果
-                network.focus(targetNodeId, { scale: 1.2, animation: true });
-                
-                // 如果節點尚未展開，展開它
-                if (!expandedNodes.has(targetNodeId)) {
-                    expandNode(targetNodeId);
-                }
-                
-                // 手動更新詳情面板（不觸發圖形選中）
-                const connectedNodeIds = new Set([targetNodeId]);
-                edges.forEach((edge) => {
-                    if (edge.from === targetNodeId) connectedNodeIds.add(edge.to);
-                    if (edge.to === targetNodeId) connectedNodeIds.add(edge.from);
-                });
-                
-                // 只更新邊的可見性，不觸發節點選中
-                edges.forEach((edge) => {
-                    const shouldShow = connectedNodeIds.has(edge.from) || connectedNodeIds.has(edge.to);
-                    edges.update({
-                        id: edge.id,
-                        hidden: !shouldShow
-                    });
-                });
-                
-                nodes.forEach((node) => {
-                    nodes.update({
-                        id: node.id,
-                        hidden: !connectedNodeIds.has(node.id)
-                    });
-                });
-                
-                renderDetail(targetNodeId, connectedNodeIds).catch((err) => {
-                    console.error("renderDetail 失敗:", err);
-                });
-            }
+            openResourceStory(targetNodeId);
         });
     });
     
@@ -1970,23 +2354,11 @@ async function renderDetail(nodeId, connectedNodeIds) {
         content.style.maxHeight = content.scrollHeight + 'px';
     });
 
-    // 為語意脈絡項目添加點擊事件
-    detailCard.querySelectorAll('.semantic-resource-item').forEach((item) => {
+    // 為故事脈絡項目添加點擊事件
+    detailCard.querySelectorAll('.story-resource-item, .semantic-resource-item').forEach((item) => {
         item.addEventListener('click', () => {
             const targetNodeId = item.getAttribute('data-node-id');
-            if (!targetNodeId) return;
-
-            const targetConnected = new Set([targetNodeId]);
-            if (edges) {
-                edges.forEach((edge) => {
-                    if (edge.from === targetNodeId) targetConnected.add(edge.to);
-                    if (edge.to === targetNodeId) targetConnected.add(edge.from);
-                });
-            }
-
-            renderDetail(targetNodeId, targetConnected).catch((err) => {
-                console.error("renderDetail 失敗:", err);
-            });
+            openResourceStory(targetNodeId);
         });
     });
 }
@@ -2041,7 +2413,7 @@ function buildResourceSummary(resource) {
 }
 
 // 建構分組的關聯資源顯示
-async function buildGroupedRelatedResources(currentNodeId, connectedNodeIds) {
+async function buildGroupedRelatedResources(currentNodeId, connectedNodeIds, sectionTitle = "關聯資源詳情") {
     // 按資源類型分組
     const groupedResources = {};
     const resourceIcons = {
@@ -2155,7 +2527,7 @@ async function buildGroupedRelatedResources(currentNodeId, connectedNodeIds) {
     
     return `
         <div class="related-section-new">
-            <h4><i class="fas fa-link"></i> 關聯資源詳情</h4>
+            <h4><i class="fas fa-link"></i> ${sectionTitle}</h4>
             <div class="resource-groups">
                 ${groups.join("")}
             </div>
@@ -2977,9 +3349,7 @@ function renderGroupSummary(groupId) {
             if (!resourceId) {
                 return;
             }
-            renderDetail(resourceId, new Set([resourceId])).catch((err) => {
-                console.error("renderDetail 失敗:", err);
-            });
+            openResourceStory(resourceId);
         });
     });
 }
@@ -3037,9 +3407,7 @@ function renderGroupModal() {
                 return;
             }
             closeGroupModal();
-            renderDetail(resourceId, new Set([resourceId])).catch((err) => {
-                console.error("renderDetail 失敗:", err);
-            });
+            openResourceStory(resourceId);
         });
     });
 }
