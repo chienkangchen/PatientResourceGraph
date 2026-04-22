@@ -2519,6 +2519,197 @@ pre {
 }
 
 /* ==========================================
+   方案一：語意脈絡區塊樣式
+   ========================================== */
+
+.semantic-context {
+    margin-top: 18px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    overflow: hidden;
+}
+
+.semantic-context-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.semantic-context-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.semantic-context-header h4 i {
+    color: #6366f1;
+}
+
+.archetype-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+.archetype-badge.archetype-problem {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.archetype-badge.archetype-event {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+}
+
+.archetype-badge.archetype-result {
+    background: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #bbf7d0;
+}
+
+.archetype-badge.archetype-action {
+    background: #fff7ed;
+    color: #ea580c;
+    border: 1px solid #fed7aa;
+}
+
+.archetype-badge.archetype-financial {
+    background: #fefce8;
+    color: #ca8a04;
+    border: 1px solid #fef08a;
+}
+
+.semantic-sections {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.semantic-section {
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    overflow: hidden;
+}
+
+.semantic-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #fafbfc;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.semantic-section-header i {
+    font-size: 14px;
+    width: 18px;
+    text-align: center;
+}
+
+.semantic-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+    flex: 1;
+}
+
+.semantic-section-count {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    background: #e2e8f0;
+    padding: 2px 8px;
+    border-radius: 10px;
+    min-width: 22px;
+    text-align: center;
+}
+
+.semantic-section-desc {
+    padding: 6px 14px;
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.4;
+    border-bottom: 1px solid #f8fafc;
+}
+
+.semantic-section-items {
+    padding: 4px 6px;
+}
+
+.semantic-resource-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+
+.semantic-resource-item:hover {
+    background: #f1f5f9;
+}
+
+.semantic-resource-item:active {
+    background: #e2e8f0;
+}
+
+.semantic-item-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+}
+
+.semantic-item-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.semantic-item-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #1e293b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.semantic-item-meta {
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.semantic-more {
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #6366f1;
+    font-style: italic;
+}
+
+/* ==========================================
    資源分組顯示樣式
    ========================================== */
 

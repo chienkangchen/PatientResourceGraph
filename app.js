@@ -256,6 +256,122 @@ const RESOURCE_GROUPS = RESOURCE_TYPES.reduce((groups, type) => {
     return groups;
 }, {});
 
+// ============================================
+// 方案一：Resource 語意原型與關聯優先序
+// ============================================
+
+const RESOURCE_ARCHETYPES = {
+    // 問題導向 (Problem): 描述臨床問題/狀況
+    Condition: "problem",
+    AllergyIntolerance: "problem",
+    DetectedIssue: "problem",
+    RiskAssessment: "problem",
+    FamilyMemberHistory: "problem",
+    Flag: "problem",
+
+    // 事件導向 (Event): 描述發生過的臨床事件
+    Encounter: "event",
+    Procedure: "event",
+    Immunization: "event",
+    EpisodeOfCare: "event",
+    Communication: "event",
+
+    // 結果導向 (Result): 描述觀察/檢驗結果
+    Observation: "result",
+    DiagnosticReport: "result",
+    ImagingStudy: "result",
+    Specimen: "result",
+    Media: "result",
+    ClinicalImpression: "result",
+    BodyStructure: "result",
+    Composition: "result",
+    DocumentReference: "result",
+    QuestionnaireResponse: "result",
+
+    // 行動導向 (Action): 描述計畫/醫囑/行動
+    MedicationRequest: "action",
+    MedicationStatement: "action",
+    MedicationAdministration: "action",
+    MedicationDispense: "action",
+    ServiceRequest: "action",
+    DeviceRequest: "action",
+    NutritionOrder: "action",
+    CarePlan: "action",
+    CareTeam: "action",
+    Goal: "action",
+    Task: "action",
+    Appointment: "action",
+    VisionPrescription: "action",
+
+    // 財務導向 (Financial)
+    Claim: "financial",
+    ClaimResponse: "financial",
+    ExplanationOfBenefit: "financial",
+    Coverage: "financial",
+    Account: "financial",
+    ChargeItem: "financial",
+    Invoice: "financial",
+    PaymentNotice: "financial",
+    PaymentReconciliation: "financial",
+    CoverageEligibilityRequest: "financial",
+    CoverageEligibilityResponse: "financial",
+    EnrollmentRequest: "financial",
+    EnrollmentResponse: "financial"
+};
+
+const ARCHETYPE_LABELS = {
+    problem: "問題導向",
+    event: "事件導向",
+    result: "結果導向",
+    action: "行動導向",
+    financial: "財務導向"
+};
+
+const RELATED_RESOURCE_PRIORITY = {
+    Condition: {
+        contextLabel: "診斷/問題的臨床脈絡",
+        priorities: [
+            { type: "Encounter", label: "相關就醫紀錄", description: "此診斷在哪些就醫中被記錄或處理" },
+            { type: "Observation", label: "相關觀察結果", description: "支持或追蹤此診斷的觀察/檢驗" },
+            { type: "MedicationRequest", label: "相關用藥處方", description: "針對此診斷開立的藥物" },
+            { type: "Procedure", label: "相關處置", description: "因此診斷而施行的處置或手術" },
+            { type: "DiagnosticReport", label: "相關診斷報告", description: "與此診斷相關的報告" },
+            { type: "CarePlan", label: "相關照護計畫", description: "為管理此診斷制定的照護計畫" }
+        ]
+    },
+    Encounter: {
+        contextLabel: "就醫事件的完整脈絡",
+        priorities: [
+            { type: "Condition", label: "就醫診斷", description: "此次就醫中記錄的診斷" },
+            { type: "Observation", label: "觀察結果", description: "此次就醫中進行的觀察/檢驗" },
+            { type: "MedicationRequest", label: "用藥處方", description: "此次就醫開立的藥物" },
+            { type: "Procedure", label: "處置紀錄", description: "此次就醫中施行的處置" },
+            { type: "DiagnosticReport", label: "診斷報告", description: "此次就醫中產生的報告" },
+            { type: "ServiceRequest", label: "醫令紀錄", description: "此次就醫中開立的醫令" }
+        ]
+    },
+    Observation: {
+        contextLabel: "觀察結果的臨床脈絡",
+        priorities: [
+            { type: "Encounter", label: "所屬就醫", description: "此觀察結果產生的就醫事件" },
+            { type: "Condition", label: "相關診斷", description: "此觀察結果可能支持的診斷" },
+            { type: "DiagnosticReport", label: "所屬報告", description: "包含此觀察結果的診斷報告" },
+            { type: "ServiceRequest", label: "來源醫令", description: "觸發此觀察的醫令" },
+            { type: "Observation", label: "相關觀察", description: "同一脈絡中的其他觀察結果" }
+        ]
+    },
+    MedicationRequest: {
+        contextLabel: "用藥處方的臨床脈絡",
+        priorities: [
+            { type: "Encounter", label: "開立就醫", description: "此處方的開立就醫事件" },
+            { type: "Condition", label: "用藥適應症", description: "此處方所針對的診斷" },
+            { type: "MedicationAdministration", label: "給藥記錄", description: "此處方的實際給藥情形" },
+            { type: "MedicationDispense", label: "配藥記錄", description: "此處方的配藥情形" },
+            { type: "Observation", label: "相關觀察", description: "用藥前後的相關觀察結果" }
+        ]
+    }
+};
+
 let client = null;
 let patientResource = null;
 let resourcesByType = {};
@@ -1491,6 +1607,132 @@ function updateVisibility() {
     });
 }
 
+// ============================================
+// 方案一：語意脈絡 — 按 Resource Archetype 顯示關聯
+// ============================================
+
+/**
+ * 找出與指定資源有直接 reference 關聯的特定類型資源
+ * 雙向查詢：正向 (resource → target) 與反向 (target → resource)
+ */
+function findRelatedByType(resource, targetType) {
+    const nodeId = `${resource.resourceType}/${resource.id}`;
+    const seen = new Set();
+    const results = [];
+
+    // 1. 正向：此資源引用的 targetType 資源
+    const refs = extractReferences(resource);
+    refs.forEach(({ target }) => {
+        if (target.startsWith(`${targetType}/`) && !seen.has(target)) {
+            seen.add(target);
+            const res = resourceMap.get(target);
+            if (res) results.push(res);
+        }
+    });
+
+    // 2. 反向：targetType 資源中引用此資源的
+    const targetResources = resourcesByType[targetType] || [];
+    targetResources.forEach((targetRes) => {
+        const targetNodeId = `${targetRes.resourceType}/${targetRes.id}`;
+        if (seen.has(targetNodeId)) return;
+
+        if (resourceReferences(targetRes, nodeId)) {
+            seen.add(targetNodeId);
+            results.push(targetRes);
+        }
+    });
+
+    // 3. 間接關聯：透過共同 Encounter 連結
+    if (targetType !== "Encounter" && resource.resourceType !== "Encounter") {
+        const encounterRefs = refs
+            .filter(({ target }) => target.startsWith("Encounter/"))
+            .map(({ target }) => target);
+
+        if (encounterRefs.length > 0) {
+            targetResources.forEach((targetRes) => {
+                const targetNodeId = `${targetRes.resourceType}/${targetRes.id}`;
+                if (seen.has(targetNodeId)) return;
+
+                const targetRefs = extractReferences(targetRes);
+                const sharesEncounter = targetRefs.some(({ target }) =>
+                    encounterRefs.includes(target)
+                );
+                if (sharesEncounter) {
+                    seen.add(targetNodeId);
+                    results.push(targetRes);
+                }
+            });
+        }
+    }
+
+    return sortResourcesByDate(results);
+}
+
+/**
+ * 建構語意脈絡區塊 — 根據 Resource Archetype 顯示優先關聯資源
+ */
+function buildSemanticContext(resource) {
+    const resType = resource.resourceType;
+    const config = RELATED_RESOURCE_PRIORITY[resType];
+    if (!config) return "";
+
+    const sections = [];
+
+    config.priorities.forEach(({ type, label, description }) => {
+        const related = findRelatedByType(resource, type);
+        if (!related.length) return;
+
+        const color = TYPE_COLORS[type] || TYPE_COLORS.Unknown;
+        const icon = RESOURCE_GROUP_ICONS[type] || "fa-cubes";
+
+        const items = related.slice(0, 8).map((r) => {
+            const rNodeId = `${r.resourceType}/${r.id}`;
+            const dateStr = getDisplayDate(r) || "無日期";
+            const statusStr = getResourceStatus(r);
+            return `
+                <button type="button" class="semantic-resource-item" data-node-id="${escapeHtml(rNodeId)}">
+                    <span class="semantic-item-dot" style="background:${color}"></span>
+                    <span class="semantic-item-body">
+                        <span class="semantic-item-title">${escapeHtml(getResourceCardTitle(r))}</span>
+                        <span class="semantic-item-meta">${escapeHtml(dateStr)}${statusStr ? " · " + escapeHtml(statusStr) : ""}</span>
+                    </span>
+                </button>
+            `;
+        }).join("");
+
+        sections.push(`
+            <div class="semantic-section">
+                <div class="semantic-section-header">
+                    <i class="fas ${icon}" style="color:${color}" aria-hidden="true"></i>
+                    <span class="semantic-section-title">${label}</span>
+                    <span class="semantic-section-count">${related.length}</span>
+                </div>
+                <div class="semantic-section-desc">${description}</div>
+                <div class="semantic-section-items">
+                    ${items}
+                    ${related.length > 8 ? `<div class="semantic-more">還有 ${related.length - 8} 項...</div>` : ""}
+                </div>
+            </div>
+        `);
+    });
+
+    if (!sections.length) return "";
+
+    const archetype = RESOURCE_ARCHETYPES[resType] || "unknown";
+
+    return `
+        <div class="semantic-context">
+            <div class="semantic-context-header">
+                <h4><i class="fas fa-diagram-project" aria-hidden="true"></i> ${config.contextLabel}</h4>
+                <span class="archetype-badge archetype-${archetype}">${ARCHETYPE_LABELS[archetype] || archetype}</span>
+            </div>
+            <div class="semantic-sections">
+                ${sections.join("")}
+            </div>
+        </div>
+    `;
+}
+
 async function renderDetail(nodeId, connectedNodeIds) {
     let resource = resourceMap.get(nodeId);
 
@@ -1612,6 +1854,9 @@ async function renderDetail(nodeId, connectedNodeIds) {
     const title = `${chineseLabel}`;
     const summary = buildResourceSummary(resource);
     
+    // 方案一：語意脈絡區塊（優先顯示）
+    const semanticHtml = buildSemanticContext(resource);
+
     // 構建關聯資源列表（分組顯示）
     let relatedHtml = "";
     if (connectedNodeIds && connectedNodeIds.size > 1) {
@@ -1621,6 +1866,7 @@ async function renderDetail(nodeId, connectedNodeIds) {
     detailCard.innerHTML = `
         <h3>${title}</h3>
         <div class="detail-summary">${summary}</div>
+        ${semanticHtml}
         ${relatedHtml}
         <div class="json-collapsible">
             <div class="json-header" tabindex="0" role="button" aria-expanded="false" aria-controls="json-content-resource">
@@ -1710,6 +1956,26 @@ async function renderDetail(nodeId, connectedNodeIds) {
     // 初始化資源分組的展開狀態（預設全部展開）
     detailCard.querySelectorAll('.resource-group-content').forEach((content) => {
         content.style.maxHeight = content.scrollHeight + 'px';
+    });
+
+    // 為語意脈絡項目添加點擊事件
+    detailCard.querySelectorAll('.semantic-resource-item').forEach((item) => {
+        item.addEventListener('click', () => {
+            const targetNodeId = item.getAttribute('data-node-id');
+            if (!targetNodeId) return;
+
+            const targetConnected = new Set([targetNodeId]);
+            if (edges) {
+                edges.forEach((edge) => {
+                    if (edge.from === targetNodeId) targetConnected.add(edge.to);
+                    if (edge.to === targetNodeId) targetConnected.add(edge.from);
+                });
+            }
+
+            renderDetail(targetNodeId, targetConnected).catch((err) => {
+                console.error("renderDetail 失敗:", err);
+            });
+        });
     });
 }
 
