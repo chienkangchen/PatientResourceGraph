@@ -2025,6 +2025,36 @@ function buildCompactDetailPanel(resource, relatedResources) {
     `;
 }
 
+function buildRelatedFilterChips(filterTypes, selectedTypes) {
+    const selectedTypeSet = new Set(selectedTypes || []);
+    const allSelected = !selectedTypeSet.size || selectedTypeSet.size === filterTypes.length;
+
+    return `
+        <div class="related-filter-chips" role="group" aria-label="ResourceType 篩選">
+            <button type="button" class="related-filter-chip ${allSelected ? "active" : ""}" data-filter-type="all">全部</button>
+            ${filterTypes.map((type) => `
+                <button type="button" class="related-filter-chip ${selectedTypeSet.has(type) ? "active" : ""}" data-filter-type="${escapeHtml(type)}">${escapeHtml(type)}</button>
+            `).join("")}
+        </div>
+    `;
+}
+
+function matchesRelatedSearch(resource, query) {
+    if (!query) {
+        return true;
+    }
+
+    const searchableText = [
+        getResourceCardTitle(resource),
+        resource.resourceType,
+        getResourceStatus(resource),
+        resource.id,
+        getDisplayDate(resource)
+    ].filter(Boolean).join(" ").toLowerCase();
+
+    return searchableText.includes(query.trim().toLowerCase());
+}
+
 function buildRelatedTableView(resources, selectedNodeId) {
     if (!resources.length) {
         return '<div class="empty-state">找不到相關 Resource</div>';
@@ -2106,12 +2136,29 @@ async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = 
     activeRelatedContext = {
         sourceNodeId: currentNodeId,
         resources,
+        selectedTypes: [],
+        searchQuery: "",
         selectedNodeId: resources[0] ? `${resources[0].resourceType}/${resources[0].id}` : null
     };
 
     groupModal.hidden = false;
     document.body.classList.add("modal-open");
     renderGroupModal();
+}
+
+function focusResourceNodeInGraph(targetNodeId) {
+    if (!targetNodeId) {
+        return;
+    }
+
+    ensureResourceNodeInGraph(targetNodeId);
+
+    if (network && nodes && nodes.get(targetNodeId)) {
+        network.selectNodes([targetNodeId]);
+        network.focus(targetNodeId, { scale: 1.2, animation: true });
+    }
+
+    selectNodeById(targetNodeId);
 }
 
 function ensureResourceNodeInGraph(targetNodeId) {
@@ -2149,9 +2196,7 @@ function openResourceStory(targetNodeId) {
     ensureResourceNodeInGraph(targetNodeId);
 
     if (network && nodes && nodes.get(targetNodeId)) {
-        network.selectNodes([targetNodeId]);
-        network.focus(targetNodeId, { scale: 1.2, animation: true });
-        selectNodeById(targetNodeId);
+        focusResourceNodeInGraph(targetNodeId);
         return;
     }
 
@@ -3468,7 +3513,7 @@ function renderGroupSummary(groupId) {
             <div class="summary-row"><span>Resource Type</span><span>${group.types[0]}</span></div>
         </div>
         <button class="primary-btn group-summary-action" id="open-group-modal-action" type="button">
-            <i class="fas fa-up-right-from-square" aria-hidden="true"></i> 以表格或時間軸檢視
+            <i class="fas fa-up-right-from-square" aria-hidden="true"></i> 以表格檢視
         </button>
         <div class="group-resource-preview-list">
             ${previewItems || '<div class="empty-state">此群組沒有資源</div>'}
@@ -3519,19 +3564,42 @@ function closeGroupModal() {
 function renderGroupModal() {
     if (activeModalMode === "related") {
         const sourceResource = activeRelatedContext ? resourceMap.get(activeRelatedContext.sourceNodeId) : null;
-        const resources = activeRelatedContext ? activeRelatedContext.resources : [];
+        const resources = activeRelatedContext ? sortResourcesByDate(activeRelatedContext.resources) : [];
+        const selectedTypes = activeRelatedContext?.selectedTypes || [];
+        const searchQuery = activeRelatedContext?.searchQuery || "";
+        const filterTypes = Array.from(new Set(resources.map((item) => item.resourceType).filter(Boolean))).sort();
+        const selectedTypeSet = new Set(selectedTypes);
+        const filteredResources = resources.filter((item) => {
+            const matchesType = !selectedTypeSet.size || selectedTypeSet.has(item.resourceType);
+            return matchesType && matchesRelatedSearch(item, searchQuery);
+        });
+
+        if (activeRelatedContext && (!activeRelatedContext.selectedNodeId || !filteredResources.some((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId))) {
+            activeRelatedContext.selectedNodeId = filteredResources[0] ? `${filteredResources[0].resourceType}/${filteredResources[0].id}` : null;
+        }
+
         const selectedResource = activeRelatedContext && activeRelatedContext.selectedNodeId
-            ? resources.find((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId)
+            ? filteredResources.find((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId)
             : null;
 
         groupModalTitle.textContent = sourceResource
             ? `與該 ${sourceResource.resourceType} 相關的 Resource`
             : "相關 Resource";
-        groupModalMeta.textContent = `${resources.length} 項相關資料`;
+        groupModalMeta.textContent = `${filteredResources.length} 項相關資料`;
         groupModalBody.innerHTML = `
+            <div class="related-modal-toolbar">
+                <div class="related-toolbar-block">
+                    <span class="related-filter-label">ResourceType 篩選</span>
+                    ${buildRelatedFilterChips(filterTypes, selectedTypes)}
+                </div>
+                <label class="related-search-field">
+                    <span class="related-filter-label">搜尋</span>
+                    <input id="related-resource-search" class="related-search-input" type="search" placeholder="搜尋標題、類型、狀態或 ID" value="${escapeHtml(searchQuery)}" />
+                </label>
+            </div>
             <div class="related-modal-layout">
                 <div class="related-modal-list">
-                    ${buildRelatedTableView(resources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null)}
+                    ${buildRelatedTableView(filteredResources, activeRelatedContext ? activeRelatedContext.selectedNodeId : null)}
                 </div>
                 <div class="related-modal-detail">
                     ${buildRelatedResourceDetail(selectedResource)}
@@ -3539,12 +3607,51 @@ function renderGroupModal() {
             </div>
         `;
 
+        groupModalBody.querySelectorAll("[data-filter-type]").forEach((element) => {
+            element.addEventListener("click", () => {
+                if (!activeRelatedContext) {
+                    return;
+                }
+
+                const filterType = element.dataset.filterType;
+                if (!filterType || filterType === "all") {
+                    activeRelatedContext.selectedTypes = [];
+                    renderGroupModal();
+                    return;
+                }
+
+                const currentTypes = new Set(activeRelatedContext.selectedTypes || []);
+                if (currentTypes.has(filterType)) {
+                    currentTypes.delete(filterType);
+                } else {
+                    currentTypes.add(filterType);
+                }
+
+                activeRelatedContext.selectedTypes = currentTypes.size === filterTypes.length
+                    ? []
+                    : Array.from(currentTypes).sort();
+                renderGroupModal();
+            });
+        });
+
+        const relatedSearchInput = document.getElementById("related-resource-search");
+        if (relatedSearchInput) {
+            relatedSearchInput.addEventListener("input", () => {
+                if (!activeRelatedContext) {
+                    return;
+                }
+                activeRelatedContext.searchQuery = relatedSearchInput.value || "";
+                renderGroupModal();
+            });
+        }
+
         groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
             element.addEventListener("click", () => {
                 if (!activeRelatedContext) {
                     return;
                 }
                 activeRelatedContext.selectedNodeId = element.dataset.resourceId;
+                focusResourceNodeInGraph(activeRelatedContext.selectedNodeId);
                 renderGroupModal();
             });
         });
@@ -3569,19 +3676,8 @@ function renderGroupModal() {
     groupModalTitle.textContent = `${group.label}資源`;
     groupModalMeta.textContent = `${resources.length} 項 · ${group.types[0]}`;
     groupModalBody.innerHTML = `
-        <div class="group-modal-toolbar">
-            <button type="button" class="group-view-toggle ${activeGroupModalView === "table" ? "active" : ""}" data-view="table">表格</button>
-            <button type="button" class="group-view-toggle ${activeGroupModalView === "timeline" ? "active" : ""}" data-view="timeline">時間軸</button>
-        </div>
-        ${activeGroupModalView === "timeline" ? buildGroupTimelineView(resources, group) : buildGroupTableView(resources, group)}
+        ${buildGroupTableView(resources, group)}
     `;
-
-    groupModalBody.querySelectorAll(".group-view-toggle").forEach((button) => {
-        button.addEventListener("click", () => {
-            activeGroupModalView = button.dataset.view || "table";
-            renderGroupModal();
-        });
-    });
 
     groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
         element.addEventListener("click", () => {

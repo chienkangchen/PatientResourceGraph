@@ -1221,6 +1221,12 @@ body.modal-open {
     .related-modal-detail {
         padding: 16px;
     }
+
+    .related-search-field,
+    .related-search-input {
+        width: 100%;
+        min-width: 0;
+    }
 }
 
 .detail-summary {
@@ -1418,6 +1424,82 @@ body.modal-open {
     grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
     gap: 18px;
     align-items: start;
+}
+
+.related-modal-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.related-toolbar-block,
+.related-search-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.related-search-field {
+    min-width: min(320px, 100%);
+}
+
+.related-filter-label {
+    color: #334155;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.related-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.related-filter-chip {
+    border: 1px solid #bfdbfe;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.86rem;
+    font-weight: 600;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.related-filter-chip:hover,
+.related-filter-chip:focus-visible {
+    outline: none;
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.22);
+}
+
+.related-filter-chip.active {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border-color: #1d4ed8;
+    color: #ffffff;
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.24);
+}
+
+.related-search-input {
+    min-width: 220px;
+    padding: 10px 14px;
+    border: 1px solid #bfdbfe;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.9rem;
+    font-family: inherit;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+
+.related-search-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.22);
 }
 
 .related-modal-list,
