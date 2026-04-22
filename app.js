@@ -2459,7 +2459,7 @@ function buildEncounterRelatedListView(groups, selectedNodeId) {
                                         <span class="related-group-item-title">${escapeHtml(getResourceCardTitle(resource))}</span>
                                         <span class="related-group-item-meta">${escapeHtml(resource.resourceType || "-")} · ${escapeHtml(dateText)} · ${escapeHtml(statusText)}</span>
                                     </span>
-                                    <span class="related-group-item-id">${escapeHtml(resource.id || "-")}</span>
+                                    <span class="related-group-item-id">${escapeHtml(`ID:${resource.id || "-"}`)}</span>
                                 </button>
                             `;
                         }).join("")}
@@ -2797,43 +2797,6 @@ function buildSemanticContext(resource) {
 async function renderDetail(nodeId, connectedNodeIds) {
     let resource = resourceMap.get(nodeId);
 
-    if (resource && resource.resourceType === "Patient") {
-        const chineseLabel = RESOURCE_LABELS["Patient"] || "Patient";
-        detailCard.innerHTML = `
-            <h3>${chineseLabel}</h3>
-            <div class="json-collapsible">
-                <div class="json-header" tabindex="0" role="button" aria-expanded="false" aria-controls="json-content-patient">
-                    <span>原始資料</span>
-                    <span class="collapse-icon">▼</span>
-                </div>
-                <div id="json-content-patient" class="json-content collapsed">
-                    <pre>${escapeHtml(JSON.stringify(resource, null, 2))}</pre>
-                </div>
-            </div>
-        `;
-        
-        // 添加折疊功能
-        const jsonHeader = detailCard.querySelector('.json-header');
-        const jsonContent = detailCard.querySelector('.json-content');
-        const collapseIcon = detailCard.querySelector('.collapse-icon');
-        
-        const toggleJson = () => {
-            const isCollapsed = jsonContent.classList.toggle('collapsed');
-            collapseIcon.classList.toggle('collapsed');
-            jsonHeader.setAttribute('aria-expanded', !isCollapsed);
-        };
-        
-        jsonHeader.addEventListener('click', toggleJson);
-        jsonHeader.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                toggleJson();
-            }
-        });
-        
-        return;
-    }
-
     if (!resource) {
         // 在節點上標記加載狀態
         if (nodes && nodes.get(nodeId)) {
@@ -2915,39 +2878,7 @@ async function renderDetail(nodeId, connectedNodeIds) {
     const connectedResources = getConnectedResources(nodeId, connectedNodeIds);
     const detailHtml = buildCompactDetailPanel(resource, connectedResources);
 
-    detailCard.innerHTML = `
-        ${detailHtml}
-        <div class="json-collapsible">
-            <div class="json-header" tabindex="0" role="button" aria-expanded="false" aria-controls="json-content-resource">
-                <span>原始資料</span>
-                <span class="collapse-icon">▼</span>
-            </div>
-            <div id="json-content-resource" class="json-content collapsed">
-                <pre>${escapeHtml(JSON.stringify(resource, null, 2))}</pre>
-            </div>
-        </div>
-    `;
-    
-    // 添加 JSON 折疊功能
-    const jsonHeader = detailCard.querySelector('.json-header');
-    const jsonContent = detailCard.querySelector('.json-content');
-    const collapseIcon = detailCard.querySelector('.collapse-icon');
-    
-    if (jsonHeader && jsonContent && collapseIcon) {
-        const toggleJson = () => {
-            const isCollapsed = jsonContent.classList.toggle('collapsed');
-            collapseIcon.classList.toggle('collapsed');
-            jsonHeader.setAttribute('aria-expanded', !isCollapsed);
-        };
-        
-        jsonHeader.addEventListener('click', toggleJson);
-        jsonHeader.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                toggleJson();
-            }
-        });
-    }
+    detailCard.innerHTML = detailHtml;
 
     const openRelatedButton = document.getElementById('open-related-modal-action');
     if (openRelatedButton && connectedResources.length) {
