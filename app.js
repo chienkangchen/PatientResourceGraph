@@ -2740,7 +2740,7 @@ async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = 
         sourceNodeId: currentNodeId,
         resources,
         selectedTypes: [],
-        selectedNodeId: null //resources[0] ? `${resources[0].resourceType}/${resources[0].id}` : null
+        selectedNodeId: resources[0] ? `${resources[0].resourceType}/${resources[0].id}` : null
     };
 
     groupModal.hidden = false;
@@ -4239,6 +4239,7 @@ function renderGroupModal() {
         if (activeRelatedContext && (!activeRelatedContext.selectedNodeId || !filteredResources.some((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId))) {
             activeRelatedContext.selectedNodeId = filteredResources[0] ? `${filteredResources[0].resourceType}/${filteredResources[0].id}` : null;
         }
+        console.log(JSON.stringify(activeRelatedContext));
 
         const groupedResources = sourceResource
             ? buildEncounterRelatedGroups(sourceResource, filteredResources)
