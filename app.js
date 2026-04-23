@@ -476,7 +476,7 @@ let activeModalMode = "group";
 let activeRelatedContext = null;
 let activeGroupSummarySearch = "";
 let activeGroupSummarySelectedNodeId = null;
-let activeGroupSummaryExpandedTitles = new Set();
+let activeGroupSummaryExpandedIndexes = new Set();
 
 const graphContainer = document.getElementById("graph");
 const graphLoading = document.getElementById("graph-loading");
@@ -4202,7 +4202,7 @@ function openGroupModal(groupId, view = "table") {
     activeGroupModalView = view;
     activeGroupSummarySearch = "";
     activeGroupSummarySelectedNodeId = null;
-    activeGroupSummaryExpandedTitles = new Set();
+    activeGroupSummaryExpandedIndexes = new Set();
     groupModal.hidden = false;
     document.body.classList.add("modal-open");
     renderGroupModal();
@@ -4221,7 +4221,7 @@ function closeGroupModal() {
     activeRelatedContext = null;
     activeGroupSummarySearch = "";
     activeGroupSummarySelectedNodeId = null;
-    activeGroupSummaryExpandedTitles = new Set();
+    activeGroupSummaryExpandedIndexes = new Set();
 }
 
 function renderGroupModal() {
@@ -4379,17 +4379,17 @@ function renderGroupModal() {
 
     applyGroupSummarySearch(groupModalBody, activeGroupSummarySearch);
 
-    groupModalBody.querySelectorAll("[data-summary-section-title]").forEach((element) => {
+    groupModalBody.querySelectorAll("[data-summary-section-idx]").forEach((element) => {
         const toggleSection = () => {
-            const sectionTitle = element.dataset.summarySectionTitle;
-            if (!sectionTitle) {
+            const idx = element.dataset.summarySectionIdx;
+            if (idx == null) {
                 return;
             }
 
-            if (activeGroupSummaryExpandedTitles.has(sectionTitle)) {
-                activeGroupSummaryExpandedTitles.delete(sectionTitle);
+            if (activeGroupSummaryExpandedIndexes.has(idx)) {
+                activeGroupSummaryExpandedIndexes.delete(idx);
             } else {
-                activeGroupSummaryExpandedTitles.add(sectionTitle);
+                activeGroupSummaryExpandedIndexes.add(idx);
             }
             renderGroupModal();
         };
@@ -4527,8 +4527,8 @@ function buildGroupSummaryView(resources, group, selectedNodeId) {
     }
 
     const groupedSummaries = groupResourcesByDisplayTitle(resources);
-    const sections = groupedSummaries.map((summary) => {
-        const isExpanded = activeGroupSummaryExpandedTitles.has(summary.title);
+    const sections = groupedSummaries.map((summary, summaryIndex) => {
+        const isExpanded = activeGroupSummaryExpandedIndexes.has(String(summaryIndex));
         const itemsMarkup = summary.resources.map((resource) => {
             const nodeId = `${resource.resourceType}/${resource.id}`;
             const isActive = nodeId === selectedNodeId ? "active" : "";
@@ -4549,7 +4549,7 @@ function buildGroupSummaryView(resources, group, selectedNodeId) {
             <section class="group-summary-section">
                 <div
                     class="group-summary-header"
-                    data-summary-section-title="${escapeHtml(summary.title)}"
+                    data-summary-section-idx="${summaryIndex}"
                     role="button"
                     tabindex="0"
                     aria-expanded="${isExpanded ? "true" : "false"}"
