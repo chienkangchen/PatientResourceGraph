@@ -1237,6 +1237,10 @@ body.modal-open {
     flex-direction: column;
 }
 
+.group-summary-items[hidden] {
+    display: none !important;
+}
+
 .group-summary-item {
     width: 100%;
     display: flex;
