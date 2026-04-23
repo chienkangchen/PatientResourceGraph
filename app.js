@@ -476,7 +476,7 @@ let activeModalMode = "group";
 let activeRelatedContext = null;
 let activeGroupSummarySearch = "";
 let activeGroupSummarySelectedNodeId = null;
-let activeGroupSummaryDetailVisible = true;
+let activeGroupSummaryExpandedTitles = new Set();
 
 const graphContainer = document.getElementById("graph");
 const graphLoading = document.getElementById("graph-loading");
@@ -4202,7 +4202,7 @@ function openGroupModal(groupId, view = "table") {
     activeGroupModalView = view;
     activeGroupSummarySearch = "";
     activeGroupSummarySelectedNodeId = null;
-    activeGroupSummaryDetailVisible = true;
+    activeGroupSummaryExpandedTitles = new Set();
     groupModal.hidden = false;
     document.body.classList.add("modal-open");
     renderGroupModal();
@@ -4221,7 +4221,7 @@ function closeGroupModal() {
     activeRelatedContext = null;
     activeGroupSummarySearch = "";
     activeGroupSummarySelectedNodeId = null;
-    activeGroupSummaryDetailVisible = true;
+    activeGroupSummaryExpandedTitles = new Set();
 }
 
 function renderGroupModal() {
@@ -4353,9 +4353,6 @@ function renderGroupModal() {
                         value="${escapeHtml(activeGroupSummarySearch)}"
                     />
                 </label>
-                <button type="button" class="group-summary-detail-toggle" data-summary-detail-toggle="toggle" aria-label="切換明細顯示">
-                    ${activeGroupSummaryDetailVisible ? "隱藏明細" : "顯示明細"}
-                </button>
             </div>
         </div>
         ${viewMarkup}
@@ -4380,15 +4377,31 @@ function renderGroupModal() {
         });
     }
 
-    const summaryDetailToggle = groupModalBody.querySelector("[data-summary-detail-toggle]");
-    if (summaryDetailToggle) {
-        summaryDetailToggle.addEventListener("click", () => {
-            activeGroupSummaryDetailVisible = !activeGroupSummaryDetailVisible;
-            renderGroupModal();
-        });
-    }
-
     applyGroupSummarySearch(groupModalBody, activeGroupSummarySearch);
+
+    groupModalBody.querySelectorAll("[data-summary-section-title]").forEach((element) => {
+        const toggleSection = () => {
+            const sectionTitle = element.dataset.summarySectionTitle;
+            if (!sectionTitle) {
+                return;
+            }
+
+            if (activeGroupSummaryExpandedTitles.has(sectionTitle)) {
+                activeGroupSummaryExpandedTitles.delete(sectionTitle);
+            } else {
+                activeGroupSummaryExpandedTitles.add(sectionTitle);
+            }
+            renderGroupModal();
+        };
+
+        element.addEventListener("click", toggleSection);
+        element.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                toggleSection();
+            }
+        });
+    });
 
     groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
         element.addEventListener("click", () => {
@@ -4515,6 +4528,7 @@ function buildGroupSummaryView(resources, group, selectedNodeId) {
 
     const groupedSummaries = groupResourcesByDisplayTitle(resources);
     const sections = groupedSummaries.map((summary) => {
+        const isExpanded = activeGroupSummaryExpandedTitles.has(summary.title);
         const itemsMarkup = summary.resources.map((resource) => {
             const nodeId = `${resource.resourceType}/${resource.id}`;
             const isActive = nodeId === selectedNodeId ? "active" : "";
@@ -4533,13 +4547,22 @@ function buildGroupSummaryView(resources, group, selectedNodeId) {
 
         return `
             <section class="group-summary-section">
-                <div class="group-summary-header">
+                <div
+                    class="group-summary-header"
+                    data-summary-section-title="${escapeHtml(summary.title)}"
+                    role="button"
+                    tabindex="0"
+                    aria-expanded="${isExpanded ? "true" : "false"}"
+                >
                     <div>
                         <h4>${escapeHtml(summary.title)}</h4>
                     </div>
-                    <span class="group-summary-count">${summary.count}</span>
+                    <div class="group-summary-header-tail">
+                        <span class="group-summary-count">${summary.count}</span>
+                        <span class="group-summary-chevron" aria-hidden="true">${isExpanded ? "−" : "+"}</span>
+                    </div>
                 </div>
-                <div class="group-summary-items">
+                <div class="group-summary-items" ${isExpanded ? "" : "hidden"}>
                     ${itemsMarkup}
                 </div>
             </section>
@@ -4551,13 +4574,13 @@ function buildGroupSummaryView(resources, group, selectedNodeId) {
         : null;
 
     return `
-        <div class="related-modal-layout group-summary-layout ${activeGroupSummaryDetailVisible ? "" : "summary-detail-collapsed"}">
+        <div class="related-modal-layout group-summary-layout">
             <div class="related-modal-list">
                 <div class="group-summary-list">
                     ${sections}
                 </div>
             </div>
-            <div class="related-modal-detail group-summary-detail" ${activeGroupSummaryDetailVisible ? "" : "hidden"}>
+            <div class="related-modal-detail group-summary-detail">
                 ${buildRelatedResourceDetail(selectedResource, {
                     emptyText: "請從左側選擇一筆資源",
                     buttonId: "group-summary-open-resource"
