@@ -1260,7 +1260,7 @@ function selectNodeById(nodeId) {
     if (meta.kind === "group") {
         network.focus(nodeId, { scale: 1.05, animation: true });
         renderGroupSummary(meta.groupId);
-        openGroupModal(meta.groupId, "table");
+        openGroupModal(meta.groupId, "summary");
         return;
     }
 
@@ -4133,7 +4133,7 @@ function renderInitialGroupOverview() {
                 network.focus(groupNodeId, { scale: 1.05, animation: true });
             } else {
                 renderGroupSummary(groupId);
-                openGroupModal(groupId, "table");
+                openGroupModal(groupId, "summary");
             }
         });
     });
@@ -4163,7 +4163,7 @@ function renderGroupSummary(groupId) {
             <div class="summary-row"><span>Resource Type</span><span>${group.types[0]}</span></div>
         </div>
         <button class="primary-btn group-summary-action" id="open-group-modal-action" type="button">
-            <i class="fas fa-up-right-from-square" aria-hidden="true"></i> 以表格檢視
+            <i class="fas fa-up-right-from-square" aria-hidden="true"></i> 開啟分群摘要
         </button>
         <div class="group-resource-preview-list">
             ${previewItems || '<div class="empty-state">此群組沒有資源</div>'}
@@ -4172,7 +4172,7 @@ function renderGroupSummary(groupId) {
 
     const openButton = document.getElementById("open-group-modal-action");
     if (openButton) {
-        openButton.addEventListener("click", () => openGroupModal(groupId, activeGroupModalView));
+        openButton.addEventListener("click", () => openGroupModal(groupId, "summary"));
     }
 
     detailCard.querySelectorAll(".group-resource-preview").forEach((button) => {
@@ -4208,6 +4208,7 @@ function closeGroupModal() {
     document.body.classList.remove("modal-open");
     activeModalMode = "group";
     activeGroupModalId = null;
+    activeGroupModalView = "table";
     activeRelatedContext = null;
 }
 
@@ -4311,11 +4312,35 @@ function renderGroupModal() {
     }
 
     const resources = sortResourcesByDate(getGroupResources(activeGroupModalId));
+    const currentView = ["summary", "table", "timeline"].includes(activeGroupModalView)
+        ? activeGroupModalView
+        : "summary";
+    const viewMarkup = currentView === "summary"
+        ? buildGroupSummaryView(resources, group)
+        : currentView === "timeline"
+            ? buildGroupTimelineView(resources, group)
+            : buildGroupTableView(resources, group);
     groupModalTitle.textContent = `${group.label}資源`;
     groupModalMeta.textContent = `${resources.length} 項 · ${group.types[0]}`;
     groupModalBody.innerHTML = `
-        ${buildGroupTableView(resources, group)}
+        <div class="group-modal-toolbar" role="tablist" aria-label="${escapeHtml(group.label)} 檢視切換">
+            <button type="button" class="group-view-toggle ${currentView === "summary" ? "active" : ""}" data-group-view="summary">Summary</button>
+            <button type="button" class="group-view-toggle ${currentView === "table" ? "active" : ""}" data-group-view="table">Table</button>
+            <button type="button" class="group-view-toggle ${currentView === "timeline" ? "active" : ""}" data-group-view="timeline">Timeline</button>
+        </div>
+        ${viewMarkup}
     `;
+
+    groupModalBody.querySelectorAll("[data-group-view]").forEach((element) => {
+        element.addEventListener("click", () => {
+            const nextView = element.dataset.groupView;
+            if (!nextView || nextView === activeGroupModalView) {
+                return;
+            }
+            activeGroupModalView = nextView;
+            renderGroupModal();
+        });
+    });
 
     groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
         element.addEventListener("click", () => {
@@ -4361,6 +4386,113 @@ function buildGroupTableView(resources, group) {
                 </thead>
                 <tbody>${rows}</tbody>
             </table>
+        </div>
+    `;
+}
+
+function normalizeGroupingLabel(value) {
+    return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function groupResourcesByDisplayTitle(resources) {
+    const groups = new Map();
+
+    resources.forEach((resource) => {
+        const rawTitle = normalizeGroupingLabel(getResourceCardTitle(resource));
+        const title = rawTitle || `未命名 ${RESOURCE_LABELS[resource.resourceType] || resource.resourceType}`;
+        if (!groups.has(title)) {
+            groups.set(title, []);
+        }
+        groups.get(title).push(resource);
+    });
+
+    return Array.from(groups.entries())
+        .map(([title, items]) => {
+            const sortedItems = sortResourcesByDate(items);
+            const latestDate = sortedItems.length ? getDisplayDate(sortedItems[0]) : "";
+            const statusCounts = new Map();
+
+            sortedItems.forEach((resource) => {
+                const status = getResourceStatus(resource);
+                if (!status) {
+                    return;
+                }
+                statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+            });
+
+            const topStatusEntry = Array.from(statusCounts.entries())
+                .sort((left, right) => right[1] - left[1])[0];
+
+            return {
+                title,
+                resources: sortedItems,
+                count: sortedItems.length,
+                latestDate,
+                topStatus: topStatusEntry ? topStatusEntry[0] : "",
+                preview: sortedItems.slice(0, 3)
+            };
+        })
+        .sort((left, right) => {
+            if (right.count !== left.count) {
+                return right.count - left.count;
+            }
+            return left.title.localeCompare(right.title);
+        });
+}
+
+function buildGroupSummaryView(resources, group) {
+    if (!resources.length) {
+        return '<div class="empty-state">此群組沒有可顯示資料</div>';
+    }
+
+    const groupedSummaries = groupResourcesByDisplayTitle(resources);
+    const cards = groupedSummaries.map((summary) => {
+        const previewMarkup = summary.preview.map((resource) => {
+            const nodeId = `${resource.resourceType}/${resource.id}`;
+            const dateText = getDisplayDate(resource) || "無日期";
+            const statusText = getResourceStatus(resource);
+            return `
+                <button type="button" class="group-summary-resource" data-resource-id="${escapeHtml(nodeId)}">
+                    <span class="group-summary-resource-main">
+                        <span class="group-summary-resource-date">${escapeHtml(dateText)}</span>
+                        <span class="group-summary-resource-id">ID ${escapeHtml(resource.id || "-")}</span>
+                    </span>
+                    <span class="group-summary-resource-meta">${statusText ? escapeHtml(statusText) : "查看這筆資料"}</span>
+                </button>
+            `;
+        }).join("");
+
+        return `
+            <section class="group-summary-card" data-group-color="${group.color}">
+                <div class="group-summary-card-head">
+                    <div>
+                        <h3>${escapeHtml(summary.title)}</h3>
+                        <p>${escapeHtml(group.label)} 中共有 ${summary.count} 筆相同主題資料</p>
+                    </div>
+                    <span class="group-summary-badge">${summary.count} 筆</span>
+                </div>
+                <div class="group-summary-metrics">
+                    <div class="group-summary-metric">
+                        <span>最近日期</span>
+                        <strong>${escapeHtml(summary.latestDate || "無日期")}</strong>
+                    </div>
+                    <div class="group-summary-metric">
+                        <span>主要狀態</span>
+                        <strong>${escapeHtml(summary.topStatus || "未標示")}</strong>
+                    </div>
+                </div>
+                <div class="group-summary-preview-list">
+                    ${previewMarkup}
+                </div>
+            </section>
+        `;
+    }).join("");
+
+    return `
+        <div class="group-summary-grid" data-group-color="${group.color}">
+            ${cards}
         </div>
     `;
 }
