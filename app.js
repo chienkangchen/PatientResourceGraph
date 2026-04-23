@@ -1274,6 +1274,10 @@ function selectNodeById(nodeId) {
         return;
     }
 
+    if (!expandedNodes.has(nodeId)) {
+        expandNode(nodeId);
+    }
+
     // 不自動展開節點與調整位置，僅顯示明細
     const connectedNodeIds = new Set([nodeId]);
     edges.forEach((edge) => {
@@ -1281,6 +1285,21 @@ function selectNodeById(nodeId) {
         if (edge.to === nodeId) connectedNodeIds.add(edge.from);
     });
 
+    nodes.forEach((node) => {
+        nodes.update({ id: node.id, hidden: !connectedNodeIds.has(node.id) });
+    });
+
+    edges.forEach((edge) => {
+        edges.update({ id: edge.id, hidden: true });
+    });
+
+    edges.forEach((edge) => {
+        if (edge.from === nodeId || edge.to === nodeId) {
+            edges.update({ id: edge.id, hidden: false });
+        }
+    });
+
+    positionConnectedNodesForSelection(nodeId, connectedNodeIds);
     // 不隱藏其他節點與邊，僅更新篩選器與明細
     updateFiltersForNode(nodeId, connectedNodeIds);
 
@@ -3051,21 +3070,10 @@ async function renderDetail(nodeId, connectedNodeIds) {
     const openRelatedButton = document.getElementById('open-related-modal-action');
     if (openRelatedButton && connectedResources.length) {
         openRelatedButton.addEventListener('click', () => {
-            // 點擊「查看相關Resource」時才展開節點與調整位置
-            if (!expandedNodes.has(nodeId)) {
-                expandNode(nodeId);
-            }
-            // 重新計算連接節點
-            const newConnectedNodeIds = new Set([nodeId]);
-            edges.forEach((edge) => {
-                if (edge.from === nodeId) newConnectedNodeIds.add(edge.to);
-                if (edge.to === nodeId) newConnectedNodeIds.add(edge.from);
-            });
-            positionConnectedNodesForSelection(nodeId, newConnectedNodeIds);
-            openRelatedResourceModal(nodeId, newConnectedNodeIds, activeGroupModalView).catch((err) => {
+            openRelatedResourceModal(nodeId, connectedNodeIds, activeGroupModalView).catch((err) => {
                 console.error('openRelatedResourceModal 失敗:', err);
             });
-        });
+        })
     }
 }
 
