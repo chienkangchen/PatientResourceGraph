@@ -4234,9 +4234,9 @@ function renderGroupModal() {
         const selectedTypeSet = new Set(selectedTypes);
         const filteredResources = resources.filter((item) => !selectedTypeSet.size || selectedTypeSet.has(item.resourceType));
 
-        if (activeRelatedContext && (!activeRelatedContext.selectedNodeId || !filteredResources.some((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId))) {
-            activeRelatedContext.selectedNodeId = filteredResources[0] ? `${filteredResources[0].resourceType}/${filteredResources[0].id}` : null;
-        }
+        // if (activeRelatedContext && (!activeRelatedContext.selectedNodeId || !filteredResources.some((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId))) {
+        //     activeRelatedContext.selectedNodeId = filteredResources[0] ? `${filteredResources[0].resourceType}/${filteredResources[0].id}` : null;
+        // }
 
         const groupedResources = sourceResource
             ? buildEncounterRelatedGroups(sourceResource, filteredResources)
@@ -4258,7 +4258,6 @@ function renderGroupModal() {
                 <div class="related-toolbar-block">
                     <span class="related-filter-label">ResourceType 篩選</span>
                     ${buildRelatedFilterChips(filterTypes, selectedTypes)}
-                    ${selectedResource}
                 </div>
             </div>
             <div class="related-modal-layout">
