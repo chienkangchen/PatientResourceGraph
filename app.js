@@ -475,8 +475,8 @@ let activeGroupModalView = "table";
 let activeModalMode = "group";
 let activeRelatedContext = null;
 let activeGroupSummarySearch = "";
-let activeGroupSummaryZoom = 1;
 let activeGroupSummarySelectedNodeId = null;
+let activeGroupSummaryDetailVisible = true;
 
 const graphContainer = document.getElementById("graph");
 const graphLoading = document.getElementById("graph-loading");
@@ -2716,7 +2716,7 @@ function buildRelatedResourceDetail(resource, options = {}) {
             </div>
             <div class="detail-action-bar">
                 <button class="primary-btn" id="${escapeHtml(buttonId)}" type="button" data-node-id="${escapeHtml(nodeId)}">
-                    <i class="fas fa-diagram-project" aria-hidden="true"></i> 在圖上定位
+                    <i class="fas fa-diagram-project" aria-hidden="true"></i> 查看相關 Resource
                 </button>
             </div>
         </div>
@@ -4201,8 +4201,8 @@ function openGroupModal(groupId, view = "table") {
     activeGroupModalId = groupId;
     activeGroupModalView = view;
     activeGroupSummarySearch = "";
-    activeGroupSummaryZoom = 1;
     activeGroupSummarySelectedNodeId = null;
+    activeGroupSummaryDetailVisible = true;
     groupModal.hidden = false;
     document.body.classList.add("modal-open");
     renderGroupModal();
@@ -4220,8 +4220,8 @@ function closeGroupModal() {
     activeGroupModalView = "table";
     activeRelatedContext = null;
     activeGroupSummarySearch = "";
-    activeGroupSummaryZoom = 1;
     activeGroupSummarySelectedNodeId = null;
+    activeGroupSummaryDetailVisible = true;
 }
 
 function renderGroupModal() {
@@ -4328,11 +4328,8 @@ function renderGroupModal() {
         ? activeGroupModalView
         : "summary";
 
-    if (currentView === "summary") {
-        const allNodeIds = new Set(resources.map((item) => `${item.resourceType}/${item.id}`));
-        if (!activeGroupSummarySelectedNodeId || !allNodeIds.has(activeGroupSummarySelectedNodeId)) {
-            activeGroupSummarySelectedNodeId = resources[0] ? `${resources[0].resourceType}/${resources[0].id}` : null;
-        }
+    if (currentView !== "summary") {
+        activeGroupSummarySelectedNodeId = null;
     }
 
     const viewMarkup = currentView === "summary"
@@ -4356,11 +4353,9 @@ function renderGroupModal() {
                         value="${escapeHtml(activeGroupSummarySearch)}"
                     />
                 </label>
-                <div class="group-summary-zoom" role="group" aria-label="Summary 縮放">
-                    <button type="button" class="group-summary-zoom-btn" data-summary-zoom="out" aria-label="縮小 Summary">A-</button>
-                    <button type="button" class="group-summary-zoom-btn" data-summary-zoom="reset" aria-label="重設 Summary 縮放">100%</button>
-                    <button type="button" class="group-summary-zoom-btn" data-summary-zoom="in" aria-label="放大 Summary">A+</button>
-                </div>
+                <button type="button" class="group-summary-detail-toggle" data-summary-detail-toggle="toggle" aria-label="切換明細顯示">
+                    ${activeGroupSummaryDetailVisible ? "隱藏明細" : "顯示明細"}
+                </button>
             </div>
         </div>
         ${viewMarkup}
@@ -4385,26 +4380,14 @@ function renderGroupModal() {
         });
     }
 
-    groupModalBody.querySelectorAll("[data-summary-zoom]").forEach((element) => {
-        element.addEventListener("click", () => {
-            const action = element.dataset.summaryZoom;
-            if (!action) {
-                return;
-            }
-
-            if (action === "in") {
-                activeGroupSummaryZoom = Math.min(1.4, Number((activeGroupSummaryZoom + 0.1).toFixed(2)));
-            } else if (action === "out") {
-                activeGroupSummaryZoom = Math.max(0.8, Number((activeGroupSummaryZoom - 0.1).toFixed(2)));
-            } else {
-                activeGroupSummaryZoom = 1;
-            }
-
-            applyGroupSummaryZoom(groupModalBody, activeGroupSummaryZoom);
+    const summaryDetailToggle = groupModalBody.querySelector("[data-summary-detail-toggle]");
+    if (summaryDetailToggle) {
+        summaryDetailToggle.addEventListener("click", () => {
+            activeGroupSummaryDetailVisible = !activeGroupSummaryDetailVisible;
+            renderGroupModal();
         });
-    });
+    }
 
-    applyGroupSummaryZoom(groupModalBody, activeGroupSummaryZoom);
     applyGroupSummarySearch(groupModalBody, activeGroupSummarySearch);
 
     groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
@@ -4568,13 +4551,13 @@ function buildGroupSummaryView(resources, group, selectedNodeId) {
         : null;
 
     return `
-        <div class="related-modal-layout group-summary-layout">
+        <div class="related-modal-layout group-summary-layout ${activeGroupSummaryDetailVisible ? "" : "summary-detail-collapsed"}">
             <div class="related-modal-list">
-                <div class="group-summary-list" style="--summary-zoom:${activeGroupSummaryZoom};">
+                <div class="group-summary-list">
                     ${sections}
                 </div>
             </div>
-            <div class="related-modal-detail group-summary-detail">
+            <div class="related-modal-detail group-summary-detail" ${activeGroupSummaryDetailVisible ? "" : "hidden"}>
                 ${buildRelatedResourceDetail(selectedResource, {
                     emptyText: "請從左側選擇一筆資源",
                     buttonId: "group-summary-open-resource"
@@ -4582,19 +4565,6 @@ function buildGroupSummaryView(resources, group, selectedNodeId) {
             </div>
         </div>
     `;
-}
-
-function applyGroupSummaryZoom(container, zoomLevel) {
-    const summaryList = container ? container.querySelector(".group-summary-list") : null;
-    if (!summaryList) {
-        return;
-    }
-
-    summaryList.style.setProperty("--summary-zoom", String(zoomLevel));
-    const resetButton = container.querySelector('[data-summary-zoom="reset"]');
-    if (resetButton) {
-        resetButton.textContent = `${Math.round(zoomLevel * 100)}%`;
-    }
 }
 
 function applyGroupSummarySearch(container, keyword) {

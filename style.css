@@ -1146,29 +1146,21 @@ body.modal-open {
     min-width: 190px;
 }
 
-.group-summary-zoom {
-    display: inline-flex;
-    gap: 6px;
-    padding: 4px;
-    border-radius: 999px;
-    background: #e2e8f0;
-}
-
-.group-summary-zoom-btn {
+.group-summary-detail-toggle {
     border: none;
-    background: #ffffff;
+    background: #e2e8f0;
     color: #334155;
     border-radius: 999px;
-    min-width: 56px;
+    padding: 0 14px;
     height: 32px;
     font-size: 0.82rem;
     font-weight: 700;
     cursor: pointer;
 }
 
-.group-summary-zoom-btn:hover,
-.group-summary-zoom-btn:focus-visible {
-    background: #f8fbff;
+.group-summary-detail-toggle:hover,
+.group-summary-detail-toggle:focus-visible {
+    background: #dbeafe;
     outline: none;
 }
 
@@ -1192,8 +1184,10 @@ body.modal-open {
     display: flex;
     flex-direction: column;
     gap: 14px;
-    zoom: var(--summary-zoom, 1);
-    transform-origin: top left;
+}
+
+.group-summary-layout.summary-detail-collapsed {
+    grid-template-columns: 1fr;
 }
 
 .group-summary-section {
