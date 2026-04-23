@@ -4298,14 +4298,15 @@ function renderGroupModal() {
         });
 
         groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
-            // element.addEventListener("click", () => {
-            //     if (!activeRelatedContext) {
-            //         return;
-            //     }
-            //     activeRelatedContext.selectedNodeId = element.dataset.resourceId;
-            //     focusResourceNodeInGraph(activeRelatedContext.selectedNodeId);
-            //     renderGroupModal();
-            // });
+            element.addEventListener("click", () => {
+                if (!activeRelatedContext) {
+                    return;
+                }
+                activeRelatedContext.selectedNodeId = element.dataset.resourceId;
+                //點擊下去後可以直接進入明細的節點
+                //focusResourceNodeInGraph(activeRelatedContext.selectedNodeId);
+                renderGroupModal();
+            });
         });
 
         const openResourceButton = document.getElementById("related-detail-open-resource");
@@ -4413,6 +4414,7 @@ function renderGroupModal() {
 
             if (currentView === "summary") {
                 activeGroupSummarySelectedNodeId = resourceId;
+                //點擊下去後可以直接進入明細的節點
                 //focusResourceNodeInGraph(resourceId);
                 renderGroupModal();
                 return;
