@@ -474,6 +474,8 @@ let activeGroupModalId = null;
 let activeGroupModalView = "table";
 let activeModalMode = "group";
 let activeRelatedContext = null;
+let activeGroupSummarySearch = "";
+let activeGroupSummaryZoom = 1;
 
 const graphContainer = document.getElementById("graph");
 const graphLoading = document.getElementById("graph-loading");
@@ -4194,6 +4196,8 @@ function openGroupModal(groupId, view = "table") {
     activeModalMode = "group";
     activeGroupModalId = groupId;
     activeGroupModalView = view;
+    activeGroupSummarySearch = "";
+    activeGroupSummaryZoom = 1;
     groupModal.hidden = false;
     document.body.classList.add("modal-open");
     renderGroupModal();
@@ -4210,6 +4214,8 @@ function closeGroupModal() {
     activeGroupModalId = null;
     activeGroupModalView = "table";
     activeRelatedContext = null;
+    activeGroupSummarySearch = "";
+    activeGroupSummaryZoom = 1;
 }
 
 function renderGroupModal() {
@@ -4321,9 +4327,27 @@ function renderGroupModal() {
     groupModalTitle.textContent = `${group.label}資源`;
     groupModalMeta.textContent = `${resources.length} 項 · ${group.types[0]}`;
     groupModalBody.innerHTML = `
-        <div class="group-modal-toolbar" role="tablist" aria-label="${escapeHtml(group.label)} 檢視切換">
-            <button type="button" class="group-view-toggle ${currentView === "summary" ? "active" : ""}" data-group-view="summary">Summary</button>
-            <button type="button" class="group-view-toggle ${currentView === "table" ? "active" : ""}" data-group-view="table">Table</button>
+        <div class="group-modal-toolbar-wrap">
+            <div class="group-modal-toolbar" role="tablist" aria-label="${escapeHtml(group.label)} 檢視切換">
+                <button type="button" class="group-view-toggle ${currentView === "summary" ? "active" : ""}" data-group-view="summary">Summary</button>
+                <button type="button" class="group-view-toggle ${currentView === "table" ? "active" : ""}" data-group-view="table">Table</button>
+            </div>
+            <div class="group-summary-tools ${currentView === "summary" ? "" : "hidden"}">
+                <label class="group-summary-search" for="group-summary-search-input">
+                    <span>搜尋</span>
+                    <input
+                        id="group-summary-search-input"
+                        type="search"
+                        placeholder="搜尋標題、日期、狀態或 ID"
+                        value="${escapeHtml(activeGroupSummarySearch)}"
+                    />
+                </label>
+                <div class="group-summary-zoom" role="group" aria-label="Summary 縮放">
+                    <button type="button" class="group-summary-zoom-btn" data-summary-zoom="out" aria-label="縮小 Summary">A-</button>
+                    <button type="button" class="group-summary-zoom-btn" data-summary-zoom="reset" aria-label="重設 Summary 縮放">100%</button>
+                    <button type="button" class="group-summary-zoom-btn" data-summary-zoom="in" aria-label="放大 Summary">A+</button>
+                </div>
+            </div>
         </div>
         ${viewMarkup}
     `;
@@ -4338,6 +4362,36 @@ function renderGroupModal() {
             renderGroupModal();
         });
     });
+
+    const summarySearchInput = groupModalBody.querySelector("#group-summary-search-input");
+    if (summarySearchInput) {
+        summarySearchInput.addEventListener("input", () => {
+            activeGroupSummarySearch = summarySearchInput.value || "";
+            applyGroupSummarySearch(groupModalBody, activeGroupSummarySearch);
+        });
+    }
+
+    groupModalBody.querySelectorAll("[data-summary-zoom]").forEach((element) => {
+        element.addEventListener("click", () => {
+            const action = element.dataset.summaryZoom;
+            if (!action) {
+                return;
+            }
+
+            if (action === "in") {
+                activeGroupSummaryZoom = Math.min(1.4, Number((activeGroupSummaryZoom + 0.1).toFixed(2)));
+            } else if (action === "out") {
+                activeGroupSummaryZoom = Math.max(0.8, Number((activeGroupSummaryZoom - 0.1).toFixed(2)));
+            } else {
+                activeGroupSummaryZoom = 1;
+            }
+
+            applyGroupSummaryZoom(groupModalBody, activeGroupSummaryZoom);
+        });
+    });
+
+    applyGroupSummaryZoom(groupModalBody, activeGroupSummaryZoom);
+    applyGroupSummarySearch(groupModalBody, activeGroupSummarySearch);
 
     groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
         element.addEventListener("click", () => {
@@ -4448,10 +4502,10 @@ function buildGroupSummaryView(resources, group) {
             const nodeId = `${resource.resourceType}/${resource.id}`;
             const dateText = getDisplayDate(resource) || "無日期";
             const statusText = getResourceStatus(resource) || "未標示狀態";
+            const searchText = `${getResourceCardTitle(resource)} ${dateText} ${statusText} ${resource.id || ""}`;
             return `
-                <button type="button" class="group-summary-item" data-resource-id="${escapeHtml(nodeId)}">
+                <button type="button" class="group-summary-item" data-resource-id="${escapeHtml(nodeId)}" data-search-text="${escapeHtml(searchText)}">
                     <span class="group-summary-item-main">
-                        <span class="group-summary-item-title">${escapeHtml(getResourceCardTitle(resource))}</span>
                         <span class="group-summary-item-meta">${escapeHtml(dateText)} · ${escapeHtml(statusText)}</span>
                     </span>
                     <span class="group-summary-item-id">${escapeHtml(`ID:${resource.id || "-"}`)}</span>
@@ -4475,10 +4529,75 @@ function buildGroupSummaryView(resources, group) {
     }).join("");
 
     return `
-        <div class="group-summary-list">
+        <div class="group-summary-list" style="--summary-zoom:${activeGroupSummaryZoom};">
             ${sections}
         </div>
     `;
+}
+
+function applyGroupSummaryZoom(container, zoomLevel) {
+    const summaryList = container ? container.querySelector(".group-summary-list") : null;
+    if (!summaryList) {
+        return;
+    }
+
+    summaryList.style.setProperty("--summary-zoom", String(zoomLevel));
+    const resetButton = container.querySelector('[data-summary-zoom="reset"]');
+    if (resetButton) {
+        resetButton.textContent = `${Math.round(zoomLevel * 100)}%`;
+    }
+}
+
+function applyGroupSummarySearch(container, keyword) {
+    const summaryList = container ? container.querySelector(".group-summary-list") : null;
+    if (!summaryList) {
+        return;
+    }
+
+    const normalizedKeyword = normalizeGroupingLabel(keyword).toLowerCase();
+    const sections = Array.from(summaryList.querySelectorAll(".group-summary-section"));
+    let visibleSectionCount = 0;
+
+    sections.forEach((section) => {
+        const titleText = (section.querySelector(".group-summary-header h4")?.textContent || "").toLowerCase();
+        const items = Array.from(section.querySelectorAll(".group-summary-item"));
+        let visibleItems = 0;
+
+        items.forEach((item) => {
+            const searchText = (item.dataset.searchText || "").toLowerCase();
+            const matched = !normalizedKeyword
+                || searchText.includes(normalizedKeyword)
+                || titleText.includes(normalizedKeyword);
+            item.hidden = !matched;
+            if (matched) {
+                visibleItems += 1;
+            }
+        });
+
+        section.hidden = visibleItems === 0;
+        if (!section.hidden) {
+            visibleSectionCount += 1;
+        }
+
+        const countNode = section.querySelector(".group-summary-count");
+        if (countNode) {
+            countNode.textContent = String(visibleItems);
+        }
+    });
+
+    let emptyNode = summaryList.querySelector(".group-summary-empty");
+    if (visibleSectionCount === 0) {
+        if (!emptyNode) {
+            emptyNode = document.createElement("div");
+            emptyNode.className = "group-summary-empty empty-state";
+            summaryList.appendChild(emptyNode);
+        }
+        emptyNode.textContent = normalizedKeyword
+            ? `找不到符合「${keyword}」的 Summary 資料`
+            : "此群組沒有可顯示資料";
+    } else if (emptyNode) {
+        emptyNode.remove();
+    }
 }
 
 function sortResourcesByDate(resources) {

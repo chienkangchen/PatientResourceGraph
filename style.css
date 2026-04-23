@@ -1100,6 +1100,78 @@ body.modal-open {
     margin-bottom: 16px;
 }
 
+.group-modal-toolbar-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.group-modal-toolbar-wrap .group-modal-toolbar {
+    margin-bottom: 0;
+}
+
+.group-summary-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.group-summary-tools.hidden {
+    display: none;
+}
+
+.group-summary-search {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 999px;
+    border: 1px solid #dbeafe;
+    background: #ffffff;
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.group-summary-search input {
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #0f172a;
+    font-size: 0.84rem;
+    min-width: 190px;
+}
+
+.group-summary-zoom {
+    display: inline-flex;
+    gap: 6px;
+    padding: 4px;
+    border-radius: 999px;
+    background: #e2e8f0;
+}
+
+.group-summary-zoom-btn {
+    border: none;
+    background: #ffffff;
+    color: #334155;
+    border-radius: 999px;
+    min-width: 56px;
+    height: 32px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.group-summary-zoom-btn:hover,
+.group-summary-zoom-btn:focus-visible {
+    background: #f8fbff;
+    outline: none;
+}
+
 .group-view-toggle {
     border: none;
     background: transparent;
@@ -1120,6 +1192,8 @@ body.modal-open {
     display: flex;
     flex-direction: column;
     gap: 14px;
+    zoom: var(--summary-zoom, 1);
+    transform-origin: top left;
 }
 
 .group-summary-section {
@@ -1200,15 +1274,10 @@ body.modal-open {
     gap: 4px;
 }
 
-.group-summary-item-title {
-    color: #0f172a;
-    font-weight: 700;
-    line-height: 1.45;
-}
-
 .group-summary-item-meta {
-    color: #64748b;
-    font-size: 0.82rem;
+    color: #475569;
+    font-size: 0.92rem;
+    font-weight: 600;
     line-height: 1.5;
 }
 
@@ -1317,12 +1386,22 @@ body.modal-open {
         font-size: 0.8rem;
     }
 
-    .group-summary-grid {
-        grid-template-columns: 1fr;
+    .group-modal-toolbar-wrap {
+        flex-direction: column;
+        align-items: stretch;
     }
 
-    .group-summary-metrics {
-        grid-template-columns: 1fr;
+    .group-summary-tools {
+        justify-content: space-between;
+    }
+
+    .group-summary-search {
+        width: 100%;
+    }
+
+    .group-summary-search input {
+        min-width: 0;
+        width: 100%;
     }
 
     .related-modal-layout {
