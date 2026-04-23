@@ -4362,7 +4362,6 @@ function buildGroupTableView(resources, group) {
             <tr class="group-table-row" data-resource-id="${nodeId}" tabindex="0">
                 <td>${escapeHtml(getDisplayDate(resource) || "-")}</td>
                 <td>${escapeHtml(getResourceCardTitle(resource))}</td>
-                <td>${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)}</td>
                 <td>${escapeHtml(getResourceStatus(resource) || "-")}</td>
                 <td>${escapeHtml(resource.id || "-")}</td>
             </tr>
@@ -4376,7 +4375,6 @@ function buildGroupTableView(resources, group) {
                     <tr>
                         <th>日期</th>
                         <th>標題</th>
-                        <th>類型</th>
                         <th>狀態</th>
                         <th>ID</th>
                     </tr>
@@ -4385,7 +4383,7 @@ function buildGroupTableView(resources, group) {
             </table>
         </div>
     `;
-}
+    }
 
 function normalizeGroupingLabel(value) {
     return String(value || "")
@@ -4445,23 +4443,40 @@ function buildGroupSummaryView(resources, group) {
     }
 
     const groupedSummaries = groupResourcesByDisplayTitle(resources);
-    const cards = groupedSummaries.map((summary) => {
+    const sections = groupedSummaries.map((summary) => {
+        const itemsMarkup = summary.resources.map((resource) => {
+            const nodeId = `${resource.resourceType}/${resource.id}`;
+            const dateText = getDisplayDate(resource) || "無日期";
+            const statusText = getResourceStatus(resource) || "未標示狀態";
+            return `
+                <button type="button" class="group-summary-item" data-resource-id="${escapeHtml(nodeId)}">
+                    <span class="group-summary-item-main">
+                        <span class="group-summary-item-title">${escapeHtml(getResourceCardTitle(resource))}</span>
+                        <span class="group-summary-item-meta">${escapeHtml(dateText)} · ${escapeHtml(statusText)}</span>
+                    </span>
+                    <span class="group-summary-item-id">${escapeHtml(`ID:${resource.id || "-"}`)}</span>
+                </button>
+            `;
+        }).join("");
+
         return `
-            <section class="group-summary-card" data-group-color="${group.color}">
-                <div class="group-summary-card-title">
-                    <h3>${escapeHtml(summary.title)}</h3>
-                    <span class="group-summary-badge">${summary.count} 筆</span>
+            <section class="group-summary-section">
+                <div class="group-summary-header">
+                    <div>
+                        <h4>${escapeHtml(summary.title)}</h4>
+                    </div>
+                    <span class="group-summary-count">${summary.count}</span>
                 </div>
-                <div class="group-summary-card-meta">
-                    <span class="group-summary-meta-date">最近日期: ${escapeHtml(summary.latestDate || "無日期")}</span>
+                <div class="group-summary-items">
+                    ${itemsMarkup}
                 </div>
             </section>
         `;
     }).join("");
 
     return `
-        <div class="group-summary-grid" data-group-color="${group.color}">
-            ${cards}
+        <div class="group-summary-list">
+            ${sections}
         </div>
     `;
 }
