@@ -4258,6 +4258,7 @@ function renderGroupModal() {
                 <div class="related-toolbar-block">
                     <span class="related-filter-label">ResourceType 篩選</span>
                     ${buildRelatedFilterChips(filterTypes, selectedTypes)}
+                    ${selectedResource}
                 </div>
             </div>
             <div class="related-modal-layout">
