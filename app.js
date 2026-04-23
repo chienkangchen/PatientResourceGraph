@@ -4262,9 +4262,6 @@ function renderGroupModal() {
             </div>
             <div class="related-modal-layout">
                 <div class="related-modal-list">
-                    ${buildRelatedResourceDetail(sourceResource)}
-                </div>
-                <div class="related-modal-list">
                     ${listMarkup}
                 </div>
                 <div class="related-modal-detail">
