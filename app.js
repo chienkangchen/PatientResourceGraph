@@ -476,6 +476,7 @@ let activeModalMode = "group";
 let activeRelatedContext = null;
 let activeGroupSummarySearch = "";
 let activeGroupSummaryZoom = 1;
+let activeGroupSummarySelectedNodeId = null;
 
 const graphContainer = document.getElementById("graph");
 const graphLoading = document.getElementById("graph-loading");
@@ -2688,9 +2689,12 @@ function buildRelatedTableView(resources, selectedNodeId) {
     `;
 }
 
-function buildRelatedResourceDetail(resource) {
+function buildRelatedResourceDetail(resource, options = {}) {
+    const emptyText = options.emptyText || "請從左側選擇一筆相關 Resource";
+    const buttonId = options.buttonId || "related-detail-open-resource";
+
     if (!resource) {
-        return '<div class="empty-state">請從左側選擇一筆相關 Resource</div>';
+        return `<div class="empty-state">${escapeHtml(emptyText)}</div>`;
     }
 
     const nodeId = `${resource.resourceType}/${resource.id}`;
@@ -2711,7 +2715,7 @@ function buildRelatedResourceDetail(resource) {
                 </div>
             </div>
             <div class="detail-action-bar">
-                <button class="primary-btn" id="related-detail-open-resource" type="button" data-node-id="${escapeHtml(nodeId)}">
+                <button class="primary-btn" id="${escapeHtml(buttonId)}" type="button" data-node-id="${escapeHtml(nodeId)}">
                     <i class="fas fa-diagram-project" aria-hidden="true"></i> 在圖上定位
                 </button>
             </div>
@@ -4198,6 +4202,7 @@ function openGroupModal(groupId, view = "table") {
     activeGroupModalView = view;
     activeGroupSummarySearch = "";
     activeGroupSummaryZoom = 1;
+    activeGroupSummarySelectedNodeId = null;
     groupModal.hidden = false;
     document.body.classList.add("modal-open");
     renderGroupModal();
@@ -4216,6 +4221,7 @@ function closeGroupModal() {
     activeRelatedContext = null;
     activeGroupSummarySearch = "";
     activeGroupSummaryZoom = 1;
+    activeGroupSummarySelectedNodeId = null;
 }
 
 function renderGroupModal() {
@@ -4321,8 +4327,16 @@ function renderGroupModal() {
     const currentView = ["summary", "table"].includes(activeGroupModalView)
         ? activeGroupModalView
         : "summary";
+
+    if (currentView === "summary") {
+        const allNodeIds = new Set(resources.map((item) => `${item.resourceType}/${item.id}`));
+        if (!activeGroupSummarySelectedNodeId || !allNodeIds.has(activeGroupSummarySelectedNodeId)) {
+            activeGroupSummarySelectedNodeId = resources[0] ? `${resources[0].resourceType}/${resources[0].id}` : null;
+        }
+    }
+
     const viewMarkup = currentView === "summary"
-        ? buildGroupSummaryView(resources, group)
+        ? buildGroupSummaryView(resources, group, activeGroupSummarySelectedNodeId)
         : buildGroupTableView(resources, group);
     groupModalTitle.textContent = `${group.label}資源`;
     groupModalMeta.textContent = `${resources.length} 項 · ${group.types[0]}`;
@@ -4399,10 +4413,30 @@ function renderGroupModal() {
             if (!resourceId) {
                 return;
             }
+
+            if (currentView === "summary") {
+                activeGroupSummarySelectedNodeId = resourceId;
+                focusResourceNodeInGraph(resourceId);
+                renderGroupModal();
+                return;
+            }
+
             closeGroupModal();
             openResourceStory(resourceId);
         });
     });
+
+    const openSummaryResourceButton = document.getElementById("group-summary-open-resource");
+    if (openSummaryResourceButton) {
+        openSummaryResourceButton.addEventListener("click", () => {
+            const resourceId = openSummaryResourceButton.dataset.nodeId;
+            if (!resourceId) {
+                return;
+            }
+            closeGroupModal();
+            openResourceStory(resourceId);
+        });
+    }
 }
 
 function buildGroupTableView(resources, group) {
@@ -4491,7 +4525,7 @@ function groupResourcesByDisplayTitle(resources) {
         });
 }
 
-function buildGroupSummaryView(resources, group) {
+function buildGroupSummaryView(resources, group, selectedNodeId) {
     if (!resources.length) {
         return '<div class="empty-state">此群組沒有可顯示資料</div>';
     }
@@ -4500,11 +4534,12 @@ function buildGroupSummaryView(resources, group) {
     const sections = groupedSummaries.map((summary) => {
         const itemsMarkup = summary.resources.map((resource) => {
             const nodeId = `${resource.resourceType}/${resource.id}`;
+            const isActive = nodeId === selectedNodeId ? "active" : "";
             const dateText = getDisplayDate(resource) || "無日期";
             const statusText = getResourceStatus(resource) || "未標示狀態";
             const searchText = `${getResourceCardTitle(resource)} ${dateText} ${statusText} ${resource.id || ""}`;
             return `
-                <button type="button" class="group-summary-item" data-resource-id="${escapeHtml(nodeId)}" data-search-text="${escapeHtml(searchText)}">
+                <button type="button" class="group-summary-item ${isActive}" data-resource-id="${escapeHtml(nodeId)}" data-search-text="${escapeHtml(searchText)}">
                     <span class="group-summary-item-main">
                         <span class="group-summary-item-meta">${escapeHtml(dateText)} · ${escapeHtml(statusText)}</span>
                     </span>
@@ -4528,9 +4563,23 @@ function buildGroupSummaryView(resources, group) {
         `;
     }).join("");
 
+    const selectedResource = selectedNodeId
+        ? resources.find((item) => `${item.resourceType}/${item.id}` === selectedNodeId)
+        : null;
+
     return `
-        <div class="group-summary-list" style="--summary-zoom:${activeGroupSummaryZoom};">
-            ${sections}
+        <div class="related-modal-layout group-summary-layout">
+            <div class="related-modal-list">
+                <div class="group-summary-list" style="--summary-zoom:${activeGroupSummaryZoom};">
+                    ${sections}
+                </div>
+            </div>
+            <div class="related-modal-detail group-summary-detail">
+                ${buildRelatedResourceDetail(selectedResource, {
+                    emptyText: "請從左側選擇一筆資源",
+                    buttonId: "group-summary-open-resource"
+                })}
+            </div>
         </div>
     `;
 }
