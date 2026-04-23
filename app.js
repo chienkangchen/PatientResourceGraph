@@ -4254,11 +4254,6 @@ function renderGroupModal() {
             : "相關 Resource";
         groupModalMeta.textContent = `${filteredResources.length} 項相關資料`;
         groupModalBody.innerHTML = `
-            <div class="related-modal-layout">
-                <div class="related-modal-list">
-                ${JSON.stringify(sourceResource)}
-                </div>
-            </div>
             <div class="related-modal-toolbar">
                 <div class="related-toolbar-block">
                     <span class="related-filter-label">ResourceType 篩選</span>
@@ -4266,6 +4261,9 @@ function renderGroupModal() {
                 </div>
             </div>
             <div class="related-modal-layout">
+                <div class="related-modal-list">
+                    ${buildRelatedResourceDetail(sourceResource)}
+                </div>
                 <div class="related-modal-list">
                     ${listMarkup}
                 </div>
