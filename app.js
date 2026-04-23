@@ -4312,21 +4312,18 @@ function renderGroupModal() {
     }
 
     const resources = sortResourcesByDate(getGroupResources(activeGroupModalId));
-    const currentView = ["summary", "table", "timeline"].includes(activeGroupModalView)
+    const currentView = ["summary", "table"].includes(activeGroupModalView)
         ? activeGroupModalView
         : "summary";
     const viewMarkup = currentView === "summary"
         ? buildGroupSummaryView(resources, group)
-        : currentView === "timeline"
-            ? buildGroupTimelineView(resources, group)
-            : buildGroupTableView(resources, group);
+        : buildGroupTableView(resources, group);
     groupModalTitle.textContent = `${group.label}資源`;
     groupModalMeta.textContent = `${resources.length} 項 · ${group.types[0]}`;
     groupModalBody.innerHTML = `
         <div class="group-modal-toolbar" role="tablist" aria-label="${escapeHtml(group.label)} 檢視切換">
             <button type="button" class="group-view-toggle ${currentView === "summary" ? "active" : ""}" data-group-view="summary">Summary</button>
             <button type="button" class="group-view-toggle ${currentView === "table" ? "active" : ""}" data-group-view="table">Table</button>
-            <button type="button" class="group-view-toggle ${currentView === "timeline" ? "active" : ""}" data-group-view="timeline">Timeline</button>
         </div>
         ${viewMarkup}
     `;
@@ -4334,7 +4331,7 @@ function renderGroupModal() {
     groupModalBody.querySelectorAll("[data-group-view]").forEach((element) => {
         element.addEventListener("click", () => {
             const nextView = element.dataset.groupView;
-            if (!nextView || nextView === activeGroupModalView) {
+            if (!nextView || !["summary", "table"].includes(nextView) || nextView === activeGroupModalView) {
                 return;
             }
             activeGroupModalView = nextView;
@@ -4449,42 +4446,14 @@ function buildGroupSummaryView(resources, group) {
 
     const groupedSummaries = groupResourcesByDisplayTitle(resources);
     const cards = groupedSummaries.map((summary) => {
-        const previewMarkup = summary.preview.map((resource) => {
-            const nodeId = `${resource.resourceType}/${resource.id}`;
-            const dateText = getDisplayDate(resource) || "無日期";
-            const statusText = getResourceStatus(resource);
-            return `
-                <button type="button" class="group-summary-resource" data-resource-id="${escapeHtml(nodeId)}">
-                    <span class="group-summary-resource-main">
-                        <span class="group-summary-resource-date">${escapeHtml(dateText)}</span>
-                        <span class="group-summary-resource-id">ID ${escapeHtml(resource.id || "-")}</span>
-                    </span>
-                    <span class="group-summary-resource-meta">${statusText ? escapeHtml(statusText) : "查看這筆資料"}</span>
-                </button>
-            `;
-        }).join("");
-
         return `
             <section class="group-summary-card" data-group-color="${group.color}">
-                <div class="group-summary-card-head">
-                    <div>
-                        <h3>${escapeHtml(summary.title)}</h3>
-                        <p>${escapeHtml(group.label)} 中共有 ${summary.count} 筆相同主題資料</p>
-                    </div>
+                <div class="group-summary-card-title">
+                    <h3>${escapeHtml(summary.title)}</h3>
                     <span class="group-summary-badge">${summary.count} 筆</span>
                 </div>
-                <div class="group-summary-metrics">
-                    <div class="group-summary-metric">
-                        <span>最近日期</span>
-                        <strong>${escapeHtml(summary.latestDate || "無日期")}</strong>
-                    </div>
-                    <div class="group-summary-metric">
-                        <span>主要狀態</span>
-                        <strong>${escapeHtml(summary.topStatus || "未標示")}</strong>
-                    </div>
-                </div>
-                <div class="group-summary-preview-list">
-                    ${previewMarkup}
+                <div class="group-summary-card-meta">
+                    <span class="group-summary-meta-date">最近日期: ${escapeHtml(summary.latestDate || "無日期")}</span>
                 </div>
             </section>
         `;
@@ -4493,32 +4462,6 @@ function buildGroupSummaryView(resources, group) {
     return `
         <div class="group-summary-grid" data-group-color="${group.color}">
             ${cards}
-        </div>
-    `;
-}
-
-function buildGroupTimelineView(resources, group) {
-    if (!resources.length) {
-        return '<div class="timeline-empty">此群組沒有可顯示資料</div>';
-    }
-
-    const items = resources.map((resource) => {
-        const nodeId = `${resource.resourceType}/${resource.id}`;
-        return `
-            <button type="button" class="timeline-item modal-timeline-item" data-resource-id="${nodeId}">
-                <span class="timeline-dot" style="background:${group.color}; box-shadow: 0 0 0 6px ${group.color}22;"></span>
-                <span class="timeline-content">
-                    <span class="timeline-date">${escapeHtml(getDisplayDate(resource) || "無日期")}</span>
-                    <span class="timeline-label">${escapeHtml(getResourceCardTitle(resource))}</span>
-                    <span class="timeline-type">${escapeHtml(RESOURCE_LABELS[resource.resourceType] || resource.resourceType)}${getResourceStatus(resource) ? ` · ${escapeHtml(getResourceStatus(resource))}` : ""}</span>
-                </span>
-            </button>
-        `;
-    }).join("");
-
-    return `
-        <div class="timeline-container modal-timeline-container">
-            <div class="timeline">${items}</div>
         </div>
     `;
 }
