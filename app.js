@@ -4256,7 +4256,7 @@ function renderGroupModal() {
         groupModalBody.innerHTML = `
             <div class="related-modal-layout">
                 <div class="related-modal-list">
-                ${sourceResource}
+                ${JSON.stringify(sourceResource)}
                 </div>
             </div>
             <div class="related-modal-toolbar">
