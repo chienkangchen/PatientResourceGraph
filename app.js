@@ -4405,22 +4405,22 @@ function renderGroupModal() {
     });
 
     groupModalBody.querySelectorAll("[data-resource-id]").forEach((element) => {
-        element.addEventListener("click", () => {
-            const resourceId = element.dataset.resourceId;
-            if (!resourceId) {
-                return;
-            }
+        // element.addEventListener("click", () => {
+        //     const resourceId = element.dataset.resourceId;
+        //     if (!resourceId) {
+        //         return;
+        //     }
 
-            if (currentView === "summary") {
-                activeGroupSummarySelectedNodeId = resourceId;
-                focusResourceNodeInGraph(resourceId);
-                renderGroupModal();
-                return;
-            }
+        //     if (currentView === "summary") {
+        //         activeGroupSummarySelectedNodeId = resourceId;
+        //         focusResourceNodeInGraph(resourceId);
+        //         renderGroupModal();
+        //         return;
+        //     }
 
-            closeGroupModal();
-            openResourceStory(resourceId);
-        });
+        //     closeGroupModal();
+        //     openResourceStory(resourceId);
+        // });
     });
 
     const openSummaryResourceButton = document.getElementById("group-summary-open-resource");
