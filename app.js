@@ -1544,6 +1544,16 @@ function expandNode(nodeId) {
     referencingResources.forEach(([srcNodeId, srcResource]) => {
         if (!expandedNodes.has(srcNodeId)) {
             expandedNodes.add(srcNodeId);
+            const wasAdded = addNode(
+                srcNodeId,
+                srcResource,
+                srcResource.resourceType,
+                getResourceDisplay(srcResource),
+                1
+            );
+            if (wasAdded) {
+                addedNodeIds.push(srcNodeId);
+            }
             collectAndAddReferences(srcNodeId, srcResource, addedNodeIds);
         }
     });
