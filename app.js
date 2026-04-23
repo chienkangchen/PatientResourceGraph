@@ -2725,6 +2725,7 @@ function buildRelatedResourceDetail(resource, options = {}) {
 }
 
 async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = "table") {
+
     if (!groupModal || !groupModalBody || !groupModalTitle || !groupModalMeta) {
         return;
     }
@@ -2738,7 +2739,7 @@ async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = 
         sourceNodeId: currentNodeId,
         resources,
         selectedTypes: [],
-        selectedNodeId: resources[0] ? `${resources[0].resourceType}/${resources[0].id}` : null
+        selectedNodeId: null //resources[0] ? `${resources[0].resourceType}/${resources[0].id}` : null
     };
 
     groupModal.hidden = false;
@@ -4234,9 +4235,9 @@ function renderGroupModal() {
         const selectedTypeSet = new Set(selectedTypes);
         const filteredResources = resources.filter((item) => !selectedTypeSet.size || selectedTypeSet.has(item.resourceType));
 
-        // if (activeRelatedContext && (!activeRelatedContext.selectedNodeId || !filteredResources.some((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId))) {
-        //     activeRelatedContext.selectedNodeId = filteredResources[0] ? `${filteredResources[0].resourceType}/${filteredResources[0].id}` : null;
-        // }
+        if (activeRelatedContext && (!activeRelatedContext.selectedNodeId || !filteredResources.some((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId))) {
+            activeRelatedContext.selectedNodeId = filteredResources[0] ? `${filteredResources[0].resourceType}/${filteredResources[0].id}` : null;
+        }
 
         const groupedResources = sourceResource
             ? buildEncounterRelatedGroups(sourceResource, filteredResources)
