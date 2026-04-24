@@ -2235,6 +2235,7 @@ function getConnectedResources(currentNodeId, connectedNodeIds) {
     }
 
     const resources = [];
+          resources.push(resourceMap.get(currentNodeId));
     connectedNodeIds.forEach((nodeId) => {
         if (nodeId === currentNodeId) {
             return;
@@ -2726,7 +2727,6 @@ function buildRelatedResourceDetail(resource, options = {}) {
 
 async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = "table") {
 
-    console.log(currentNodeId, connectedNodeIds);
     if (!groupModal || !groupModalBody || !groupModalTitle || !groupModalMeta) {
         return;
     }
