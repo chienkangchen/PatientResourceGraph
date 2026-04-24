@@ -2733,14 +2733,14 @@ async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = 
 
     await hydrateConnectedResources(connectedNodeIds);
     const resources = getConnectedResources(currentNodeId, connectedNodeIds);
-
+    const index = resources.findIndex((resource) => resource.id === currentNodeId);
     activeModalMode = "related";
     activeGroupModalView = "table";
     activeRelatedContext = {
         sourceNodeId: currentNodeId,
         resources,
         selectedTypes: [],
-        selectedNodeId: resources[0] ? `${resources[0].resourceType}/${resources[0].id}` : null
+        selectedNodeId: index !== -1 ? `${resources[index].resourceType}/${resources[index].id}` : null
     };
 
     groupModal.hidden = false;
