@@ -2733,7 +2733,9 @@ async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = 
 
     await hydrateConnectedResources(connectedNodeIds);
     const resources = getConnectedResources(currentNodeId, connectedNodeIds);
+    console.log("currentNodeId = ",currentNodeId);
     const index = resources.findIndex((resource) => resource.id === currentNodeId);
+    console.log("currentNodeId index = ",index);
     activeModalMode = "related";
     activeGroupModalView = "table";
     activeRelatedContext = {
@@ -4239,7 +4241,6 @@ function renderGroupModal() {
         if (activeRelatedContext && (!activeRelatedContext.selectedNodeId || !filteredResources.some((item) => `${item.resourceType}/${item.id}` === activeRelatedContext.selectedNodeId))) {
             activeRelatedContext.selectedNodeId = filteredResources[0] ? `${filteredResources[0].resourceType}/${filteredResources[0].id}` : null;
         }
-        console.log(JSON.stringify(activeRelatedContext));
 
         const groupedResources = sourceResource
             ? buildEncounterRelatedGroups(sourceResource, filteredResources)
