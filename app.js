@@ -1516,6 +1516,7 @@ function addNode(nodeId, resource, group, displayText, distance = 1) {
 function addEdge(from, to, label) {
     console.log("from = ",from ,"to = ", to , "label = ", label );
     const edgeId = `${from}--${label}-->${to}`;
+    console.log("edgeId = ",edgeId );
     if (edges.get(edgeId)) {
         return;
     }
