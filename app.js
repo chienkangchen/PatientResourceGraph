@@ -1734,7 +1734,7 @@ function collectAndAddReferences(sourceNodeId, resource, addedNodeIds = []) {
         if (wasAdded) {
             addedNodeIds.push(normalized);
         }
-        addEdge(sourceNodeId, normalized, "subject");
+        addEdge(sourceNodeId, normalized, "ref");
     });
 }
 
@@ -2917,7 +2917,6 @@ function findRelatedByType(resource, targetType) {
         }
     }
 
-    console.log(results);
     return sortResourcesByDate(results);
 }
 
