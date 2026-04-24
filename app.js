@@ -2641,7 +2641,7 @@ function buildEncounterRelatedListView(groups, selectedNodeId) {
                                 <button type="button" class="related-group-item ${isActive}" data-resource-id="${escapeHtml(nodeId)}">
                                     <span class="related-group-item-main">
                                         <span class="related-group-item-title">${escapeHtml(getResourceCardTitle(resource))}</span>
-                                        <span class="related-group-item-meta">${escapeHtml(resource.resourceType || "-")} · ${escapeHtml(dateText)} · ${escapeHtml(statusText)}</span>
+                                        <span class="related-group-item-meta">${escapeHtml(RESOURCE_LABELS[resource.resourceType] || "-")} · ${escapeHtml(dateText)} · ${escapeHtml(statusText)}</span>
                                     </span>
                                     <span class="related-group-item-id">${escapeHtml(`ID:${resource.id || "-"}`)}</span>
                                 </button>
@@ -2706,7 +2706,7 @@ function buildRelatedResourceDetail(resource, options = {}) {
                 <span class="resource-detail-kicker">單筆明細</span>
                 <h3>${escapeHtml(getResourceCardTitle(resource))}</h3>
                 <div class="resource-detail-meta">
-                    <span class="story-type-chip">${escapeHtml(resource.resourceType || "-")}</span>
+                    <span class="story-type-chip">${escapeHtml(RESOURCE_LABELS[resource.resourceType] || "-")}</span>
                     ${getResourceStatus(resource) ? `<span class="story-type-chip">${escapeHtml(getResourceStatus(resource))}</span>` : ""}
                 </div>
             </div>
@@ -2733,9 +2733,8 @@ async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = 
 
     await hydrateConnectedResources(connectedNodeIds);
     const resources = getConnectedResources(currentNodeId, connectedNodeIds);
-    console.log("currentNodeId = ",currentNodeId);
+    // currentNodeId = Resource + / + id number 
     const index = resources.findIndex((resource) => resource.id === currentNodeId.split("/")[1]);
-    console.log("currentNodeId index = ",index);
     activeModalMode = "related";
     activeGroupModalView = "table";
     activeRelatedContext = {
@@ -4254,7 +4253,7 @@ function renderGroupModal() {
             : null;
 
         groupModalTitle.textContent = sourceResource
-            ? `與該 ${sourceResource.resourceType} 相關的 Resource`
+            ? `與該 ${RESOURCE_LABELS[sourceResource.resourceType]}/${sourceResource.id} 相關的 Resource`
             : "相關 Resource";
         groupModalMeta.textContent = `${filteredResources.length} 項相關資料`;
         groupModalBody.innerHTML = `
