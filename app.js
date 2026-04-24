@@ -2734,7 +2734,7 @@ async function openRelatedResourceModal(currentNodeId, connectedNodeIds, view = 
     await hydrateConnectedResources(connectedNodeIds);
     const resources = getConnectedResources(currentNodeId, connectedNodeIds);
     console.log("currentNodeId = ",currentNodeId);
-    const index = resources.findIndex((resource) => resource.id === currentNodeId);
+    const index = resources.findIndex((resource) => resource.id === currentNodeId.split("/")[1]);
     console.log("currentNodeId index = ",index);
     activeModalMode = "related";
     activeGroupModalView = "table";
