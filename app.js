@@ -2356,7 +2356,7 @@ function buildRelatedFilterChips(filterTypes, selectedTypes) {
         <div class="related-filter-chips" role="group" aria-label="ResourceType 篩選">
             <button type="button" class="related-filter-chip ${allSelected ? "active" : ""}" data-filter-type="all">全部</button>
             ${filterTypes.map((type) => `
-                <button type="button" class="related-filter-chip ${selectedTypeSet.has(type) ? "active" : ""}" data-filter-type="${escapeHtml(type)}">${escapeHtml(type)}</button>
+                <button type="button" class="related-filter-chip ${selectedTypeSet.has(type) ? "active" : ""}" data-filter-type="${escapeHtml(type)}">${escapeHtml(RESOURCE_LABELS[type])}</button>
             `).join("")}
         </div>
     `;
