@@ -1171,6 +1171,7 @@ function buildGraph() {
         addEdge(patientNodeId, `Group/${groupId}`, `${groupResources.length} 項`);
     });
 
+    //edges.arrows.to = true , 默認有箭頭
     const options = {
         layout: {
             improvedLayout: true
@@ -1210,7 +1211,7 @@ function buildGraph() {
         },
         edges: {
             arrows: {
-                to: { enabled: false, scaleFactor: 0.6 }
+                to: { enabled: true, scaleFactor: 0.6 }
             },
             color: "#94a3b8",
             smooth: {
@@ -2325,7 +2326,7 @@ function buildCompactDetailPanel(resource, relatedResources) {
     const actionButtonHtml = `
         <div class="detail-action-bar detail-action-bar-top">
             <button class="primary-btn" id="open-related-modal-action" type="button" ${relatedCount ? "" : "disabled"}>
-                <i class="fas fa-table-list" aria-hidden="true"></i> 查看相關 Resource${relatedCount ? ` (${relatedCount})` : ""}
+                <i class="fas fa-table-list" aria-hidden="true"></i> 查看相關 Resource${relatedCount ? ` (${relatedCount-1})` : ""}
             </button>
         </div>
     `;
