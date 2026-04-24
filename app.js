@@ -2319,6 +2319,8 @@ function buildCompactDetailPanel(resource, relatedResources) {
     const resourceLabel = RESOURCE_LABELS[resource.resourceType] || resource.resourceType;
     const resourceStatus = getResourceStatus(resource);
     const resourceDate = getDisplayDate(resource);
+
+    // 詳細資源的地方
     const actionButtonHtml = `
         <div class="detail-action-bar detail-action-bar-top">
             <button class="primary-btn" id="open-related-modal-action" type="button" ${relatedCount ? "" : "disabled"}>
@@ -2915,6 +2917,7 @@ function findRelatedByType(resource, targetType) {
         }
     }
 
+    console.log(results);
     return sortResourcesByDate(results);
 }
 
